@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useMatchMedia } from "@/hooks/useMatchMedia";
 import type { MarketHighlightKey, MarketYearlyOverlay } from "@/lib/marketBacktrack";
 import { MARKET_CHART } from "@/lib/marketChartColors";
+import { mainEventLabelForYear } from "@/lib/pokemonYearMainEvent";
 
 /** Same breakpoint as chart slice in BacktrackMarketSection — mobile-only chart tweaks. */
 const MOBILE_CHART_ENHANCE_MQ = "(max-width: 767px)";
@@ -60,15 +61,6 @@ type Props = {
   highlightSeries?: MarketHighlightKey | null;
 };
 
-function zoneForScore(score: number) {
-  if (score >= 90) return "mania";
-  if (score >= 75) return "frenzy";
-  if (score >= 60) return "hype";
-  if (score >= 45) return "warm";
-  if (score >= 25) return "calm";
-  return "dead";
-}
-
 /** Strict local maxima on the hype score (same series as the cyan streamline). */
 function localPeakIndices(history: YearScore[]): number[] {
   if (history.length === 0) return [];
@@ -90,7 +82,7 @@ function topPeakIndices(history: YearScore[], maxMarkers: number): Set<number> {
   return new Set(sorted.slice(0, maxMarkers));
 }
 
-/** Fuchsia footer pill when this year has no curated timeline label — still “something of note” per year. */
+/** Fuchsia footer pill when this year has no curated timeline label — main franchise beat for that year (no “warm · hype N”). */
 function deriveFallbackYearSpotlight(
   idx: number,
   history: YearScore[],
@@ -99,21 +91,21 @@ function deriveFallbackYearSpotlight(
   const h = history[idx];
   if (!h) return "—";
   const prev = idx > 0 ? history[idx - 1] : null;
-  const zone = zoneForScore(h.score);
+  const beat = mainEventLabelForYear(h.year);
   const scores = history.map((x) => x.score);
   const seriesMax = Math.max(...scores);
   const seriesMin = Math.min(...scores);
 
   if (localPeakSet.has(idx)) {
-    return `Hype peak · ${zone}`;
+    return `${beat} · hype peak`;
   }
   if (prev && Math.abs(h.score - prev.score) >= 14) {
     const d = h.score - prev.score;
     return d >= 0 ? `Strong upswing +${d}` : `Pullback ${d}`;
   }
-  if (history.length > 1 && h.score === seriesMax) return `Window high · ${zone}`;
-  if (history.length > 1 && h.score === seriesMin) return `Window low · ${zone}`;
-  return `${zone} · hype ${h.score}`;
+  if (history.length > 1 && h.score === seriesMax) return `${beat} · window high`;
+  if (history.length > 1 && h.score === seriesMin) return `${beat} · window low`;
+  return beat;
 }
 
 const MARKET_COLORS = {
@@ -518,7 +510,8 @@ export default function HypeBacktrackingChart({
                 fill="#94a3b8"
                 fontSize="10"
               >
-                {activeIsHypePeak ? "Peak · " : ""}Zone: {zoneForScore(active.score)}
+                {activeIsHypePeak ? "Peak · " : ""}
+                {mainEventLabelForYear(active.year)}
               </text>
             </g>
           </>
