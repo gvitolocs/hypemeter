@@ -2120,7 +2120,11 @@ export default async function Home() {
                     title="Open this listing on CardTrader"
                   >
                     <CardTraderHighlightImage
-                      src={cardTraderBestSeller.imageUrl}
+                      src={
+                        cardTraderBestSeller.imageUrl.trim()
+                          ? "/api/card-highlight-image"
+                          : ""
+                      }
                       alt=""
                       width={70}
                       height={98}

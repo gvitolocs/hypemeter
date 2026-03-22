@@ -2,6 +2,9 @@
  * CardTrader Pokémon hub “Best sellers” via Jina reader (markdown/HTML varies).
  */
 
+import { unstable_cache } from "next/cache";
+import { CARD_TRADER_HIGHLIGHT_CACHE_SEC } from "@/lib/homePageCacheConfig";
+
 export type CardTraderBestSeller = {
   name: string;
   /** Empty string → UI shows placeholder */
@@ -272,8 +275,9 @@ export function parseCardTraderBestSellerFromText(fullText: string): CardTraderB
 
 async function fetchJinaMarkdown(): Promise<string | null> {
   const jinaUrl = `${JINA_PREFIX}${CARDTRADER_POKEMON_HUB}`;
+  // Outer `unstable_cache` owns TTL; avoid a second fetch cache layer.
   const res = await fetch(jinaUrl, {
-    next: { revalidate: 3600 },
+    cache: "no-store",
     headers: { "user-agent": "Mozilla/5.0 hypemeter" },
     signal: AbortSignal.timeout(18_000),
   });
@@ -284,15 +288,24 @@ async function fetchJinaMarkdown(): Promise<string | null> {
   return res.text();
 }
 
+const fetchCardTraderPokemonBestSellerCached = unstable_cache(
+  async (): Promise<CardTraderBestSeller | null> => {
+    try {
+      const text = await fetchJinaMarkdown();
+      if (!text) return null;
+      return parseCardTraderBestSellerFromText(text);
+    } catch (e) {
+      dbg("fetch error", e);
+      return null;
+    }
+  },
+  ["cardtrader-pokemon-best-seller-v1"],
+  { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC },
+);
+
+/** Parsed best-seller row; Jina fetch runs at most once per ~24h (Next Data Cache). */
 export async function fetchCardTraderPokemonBestSeller(): Promise<CardTraderBestSeller | null> {
-  try {
-    const text = await fetchJinaMarkdown();
-    if (!text) return null;
-    return parseCardTraderBestSellerFromText(text);
-  } catch (e) {
-    dbg("fetch error", e);
-    return null;
-  }
+  return fetchCardTraderPokemonBestSellerCached();
 }
 
 /** Raw Jina body for debug API (do not log full text in production). */
