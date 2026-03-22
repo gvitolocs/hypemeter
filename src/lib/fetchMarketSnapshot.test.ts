@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchMarketSnapshot } from "./fetchMarketSnapshot";
+import { YAHOO_QUOTE_FETCH, fetchMarketSnapshot } from "./fetchMarketSnapshot";
 
 const STOOQ_SP500 = "https://stooq.com/q/l/?s=%5Espx&i=d";
 const STOOQ_BTC = "https://stooq.com/q/l/?s=btcusd&i=d";
@@ -10,8 +10,8 @@ const YAHOO_BATCH =
 const YAHOO_GSPC = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC";
 const YAHOO_BTC = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=BTC-USD";
 const YAHOO_NTDY = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=NTDOY";
-const YAHOO_CHART_NTDY =
-  "https://query1.finance.yahoo.com/v8/finance/chart/NTDOY?interval=1d&range=3mo";
+/** Matches `fetchMarketSnapshot` chart URL (range may be 1y). */
+const isYahooNtdyChart = (url: string) => url.includes("/v8/finance/chart/NTDOY");
 const COINGECKO_BTC = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
 
 const SAMPLE_STOOQ_LINE = (close: number, open: number) =>
@@ -38,14 +38,8 @@ function jsonRes(data: unknown, ok = true): Response {
 describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
   const originalFetch = globalThis.fetch;
 
-  beforeEach(() => {
-    // Tests assert raw Yahoo/Stooq merge logic without monmeter page fallback numbers.
-    process.env.DISABLE_MARKET_SNAPSHOT_FALLBACK = "1";
-  });
-
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.DISABLE_MARKET_SNAPSHOT_FALLBACK;
     vi.restoreAllMocks();
   });
 
@@ -123,6 +117,85 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
     expect(snap.nintendo).toBe(14.5);
     expect(snap.nintendoPreviousClose).toBe(14.2);
     expect(snap.updatedAt).toMatch(/\d{4}/);
+  });
+
+  it("uses cache: no-store on Yahoo/Stooq/CoinGecko so quotes are not cached", async () => {
+    const gspcYahoo = {
+      quoteResponse: {
+        result: [
+          {
+            symbol: "^GSPC",
+            regularMarketPrice: 100,
+            regularMarketPreviousClose: 99,
+            regularMarketChangePercent: 1,
+          },
+        ],
+      },
+    };
+    const btcYahoo = {
+      quoteResponse: {
+        result: [
+          {
+            symbol: "BTC-USD",
+            regularMarketPrice: 50000,
+            regularMarketPreviousClose: 49000,
+            regularMarketChangePercent: 2,
+          },
+        ],
+      },
+    };
+    const ntdyYahoo = {
+      quoteResponse: {
+        result: [
+          {
+            symbol: "NTDOY",
+            regularMarketPrice: 14,
+            regularMarketPreviousClose: 13,
+            regularMarketChangePercent: 2,
+          },
+        ],
+      },
+    };
+
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.startsWith(STOOQ_SP500) || url.startsWith(STOOQ_BTC)) {
+        return textRes(SAMPLE_STOOQ_LINE(1, 2));
+      }
+      if (url === YAHOO_BATCH) {
+        return jsonRes({
+          quoteResponse: {
+            result: [
+              ...(gspcYahoo.quoteResponse?.result ?? []),
+              ...(btcYahoo.quoteResponse?.result ?? []),
+              ...(ntdyYahoo.quoteResponse?.result ?? []),
+            ],
+          },
+        });
+      }
+      if (url === YAHOO_GSPC) return jsonRes(gspcYahoo);
+      if (url === YAHOO_BTC) return jsonRes(btcYahoo);
+      if (url === YAHOO_NTDY) return jsonRes(ntdyYahoo);
+      throw new Error(`unexpected: ${url}`);
+    }) as typeof fetch;
+
+    globalThis.fetch = fetchSpy as typeof fetch;
+    await fetchMarketSnapshot();
+
+    const yahooCalls = fetchSpy.mock.calls.filter((c) =>
+      String(c[0]).includes("finance.yahoo.com"),
+    );
+    const ua = (YAHOO_QUOTE_FETCH.headers as Record<string, string>)["user-agent"];
+    for (const [, init] of yahooCalls) {
+      expect(init?.cache).toBe("no-store");
+      expect((init?.headers as Record<string, string>)?.["user-agent"]).toBe(ua);
+    }
+
+    const stooqCalls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes("stooq.com"));
+    for (const [, init] of stooqCalls) {
+      expect(init?.cache).toBe("no-store");
+      expect((init?.headers as Record<string, string>)?.["user-agent"]).toBe(ua);
+    }
   });
 
   it("path 1: when Yahoo is empty, Stooq CSV fills S&P and BTC levels (session % for Stooq)", async () => {
@@ -313,7 +386,7 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
           "Symbol,Date,Time,Open,High,Low,Close,Volume\nntdoy.us,2025-03-20,00:00:00,14,14,14.2,14.2,1",
         );
       }
-      if (url.startsWith(YAHOO_CHART_NTDY)) {
+      if (isYahooNtdyChart(url)) {
         return jsonRes({
           chart: {
             result: [

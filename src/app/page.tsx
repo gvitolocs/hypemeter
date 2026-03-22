@@ -90,8 +90,8 @@ type CardTraderBestSeller = {
   fromPrice: string;
 };
 
-// Revalidate the server-rendered homepage (ISR). Shorter window so deploys show up sooner on Vercel.
-export const revalidate = 300;
+// ISR window. Market sidecar uses `cache: "no-store"` fetches; keep page TTL short so HTML refreshes often.
+export const revalidate = 60;
 
 // Curated Google News query tuned for Pokemon relevance and noise reduction.
 const NEWS_QUERY = encodeURIComponent(

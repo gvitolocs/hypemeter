@@ -22,6 +22,21 @@ const YAHOO_QUOTE_NTDY_ONLY =
 /** Browser-like UA avoids empty quoteResponse for some Yahoo symbols. */
 const YAHOO_FINANCE_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+/**
+ * Bypass Next.js Data Cache for market quotes. `next: { revalidate: N }` was caching Yahoo/Stooq
+ * responses for minutes → sidecar showed stale prices vs finance.yahoo.com.
+ */
+/** Exported for tests — must stay `cache: "no-store"` so quotes match Yahoo Finance. */
+export const YAHOO_QUOTE_FETCH: RequestInit = {
+  cache: "no-store",
+  headers: { "user-agent": YAHOO_FINANCE_UA },
+};
+export const STOOQ_QUOTE_FETCH: RequestInit = {
+  cache: "no-store",
+  headers: { "user-agent": YAHOO_FINANCE_UA },
+};
+export const COINGECKO_FETCH: RequestInit = { cache: "no-store" };
 const STOOQ_SP500_URL = "https://stooq.com/q/l/?s=%5Espx&i=d";
 const STOOQ_BTC_URL = "https://stooq.com/q/l/?s=btcusd&i=d";
 /** Stooq line for Nintendo ADR — try US suffix then plain symbol (Stooq naming varies). */
@@ -37,7 +52,7 @@ const COINGECKO_BTC_URL =
 async function fetchStooqNtdyMetrics(): Promise<{ close: number | null; growthPct: number | null }> {
   for (const url of STOOQ_NTDY_URLS) {
     try {
-      const r = await fetch(url, { next: { revalidate: 900 } });
+      const r = await fetch(url, STOOQ_QUOTE_FETCH);
       if (!r.ok) continue;
       const m = parseStooqMetrics(await r.text());
       if (m.close !== null) return m;
@@ -54,10 +69,7 @@ async function fetchNintendoFromYahooChart(): Promise<{
   growthPct: number | null;
 }> {
   try {
-    const res = await fetch(YAHOO_CHART_NTDY_URL, {
-      next: { revalidate: 900 },
-      headers: { "user-agent": YAHOO_FINANCE_UA },
-    });
+    const res = await fetch(YAHOO_CHART_NTDY_URL, YAHOO_QUOTE_FETCH);
     if (!res.ok) return { price: null, previousClose: null, growthPct: null };
     const json = await res.json();
     const { last, prev } = parseYahooChartLastTwoCloses(json);
@@ -91,24 +103,12 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
 
   try {
     const [spRes, btcRes, yahooBatchRes, gsRes, btcDedRes, ntdyRes] = await Promise.all([
-      fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
-      fetch(STOOQ_BTC_URL, { next: { revalidate: 900 } }),
-      fetch(MARKET_QUOTES_URL, {
-        next: { revalidate: 300 },
-        headers: { "user-agent": YAHOO_FINANCE_UA },
-      }),
-      fetch(YAHOO_QUOTE_GSPC_ONLY, {
-        next: { revalidate: 300 },
-        headers: { "user-agent": YAHOO_FINANCE_UA },
-      }),
-      fetch(YAHOO_QUOTE_BTC_ONLY, {
-        next: { revalidate: 300 },
-        headers: { "user-agent": YAHOO_FINANCE_UA },
-      }),
-      fetch(YAHOO_QUOTE_NTDY_ONLY, {
-        next: { revalidate: 300 },
-        headers: { "user-agent": YAHOO_FINANCE_UA },
-      }),
+      fetch(STOOQ_SP500_URL, STOOQ_QUOTE_FETCH),
+      fetch(STOOQ_BTC_URL, STOOQ_QUOTE_FETCH),
+      fetch(MARKET_QUOTES_URL, YAHOO_QUOTE_FETCH),
+      fetch(YAHOO_QUOTE_GSPC_ONLY, YAHOO_QUOTE_FETCH),
+      fetch(YAHOO_QUOTE_BTC_ONLY, YAHOO_QUOTE_FETCH),
+      fetch(YAHOO_QUOTE_NTDY_ONLY, YAHOO_QUOTE_FETCH),
     ]);
     const spx = spRes.ok ? parseStooqMetrics(await spRes.text()) : { close: null, growthPct: null };
     const btc = btcRes.ok ? parseStooqMetrics(await btcRes.text()) : { close: null, growthPct: null };
@@ -157,24 +157,12 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
 
   try {
     const [spRes, btcRes, yahooBatchRes, gsRes, btcDedRes, ntdyRes] = await Promise.all([
-      fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
-      fetch(COINGECKO_BTC_URL, { next: { revalidate: 300 } }),
-      fetch(MARKET_QUOTES_URL, {
-        next: { revalidate: 300 },
-        headers: { "user-agent": YAHOO_FINANCE_UA },
-      }),
-      fetch(YAHOO_QUOTE_GSPC_ONLY, {
-        next: { revalidate: 300 },
-        headers: { "user-agent": YAHOO_FINANCE_UA },
-      }),
-      fetch(YAHOO_QUOTE_BTC_ONLY, {
-        next: { revalidate: 300 },
-        headers: { "user-agent": YAHOO_FINANCE_UA },
-      }),
-      fetch(YAHOO_QUOTE_NTDY_ONLY, {
-        next: { revalidate: 300 },
-        headers: { "user-agent": YAHOO_FINANCE_UA },
-      }),
+      fetch(STOOQ_SP500_URL, STOOQ_QUOTE_FETCH),
+      fetch(COINGECKO_BTC_URL, COINGECKO_FETCH),
+      fetch(MARKET_QUOTES_URL, YAHOO_QUOTE_FETCH),
+      fetch(YAHOO_QUOTE_GSPC_ONLY, YAHOO_QUOTE_FETCH),
+      fetch(YAHOO_QUOTE_BTC_ONLY, YAHOO_QUOTE_FETCH),
+      fetch(YAHOO_QUOTE_NTDY_ONLY, YAHOO_QUOTE_FETCH),
     ]);
     const spText = spRes.ok ? await spRes.text() : "";
     const btcData = btcRes.ok

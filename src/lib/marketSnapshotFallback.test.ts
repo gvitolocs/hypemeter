@@ -4,13 +4,16 @@ import { applyMarketSnapshotFallback, MARKET_SNAPSHOT_PAGE_FALLBACK } from "@/li
 describe("applyMarketSnapshotFallback", () => {
   beforeEach(() => {
     delete process.env.DISABLE_MARKET_SNAPSHOT_FALLBACK;
+    delete process.env.MARKET_SNAPSHOT_STATIC_FALLBACK;
   });
 
   afterEach(() => {
     delete process.env.DISABLE_MARKET_SNAPSHOT_FALLBACK;
+    delete process.env.MARKET_SNAPSHOT_STATIC_FALLBACK;
   });
 
-  it("fills null fields from page fallback", () => {
+  it("fills null fields from page fallback when MARKET_SNAPSHOT_STATIC_FALLBACK=1", () => {
+    process.env.MARKET_SNAPSHOT_STATIC_FALLBACK = "1";
     const out = applyMarketSnapshotFallback({
       sp500: null,
       bitcoin: 70000,
@@ -29,6 +32,7 @@ describe("applyMarketSnapshotFallback", () => {
 
   it("respects DISABLE_MARKET_SNAPSHOT_FALLBACK=1", () => {
     process.env.DISABLE_MARKET_SNAPSHOT_FALLBACK = "1";
+    process.env.MARKET_SNAPSHOT_STATIC_FALLBACK = "1";
     const out = applyMarketSnapshotFallback({
       sp500: null,
       bitcoin: null,
@@ -41,5 +45,20 @@ describe("applyMarketSnapshotFallback", () => {
     });
     expect(out.sp500).toBeNull();
     delete process.env.DISABLE_MARKET_SNAPSHOT_FALLBACK;
+  });
+
+  it("by default does not inject static demo numbers", () => {
+    const out = applyMarketSnapshotFallback({
+      sp500: null,
+      bitcoin: null,
+      nintendo: null,
+      nintendoPreviousClose: null,
+      sp500GrowthPct: null,
+      bitcoinGrowthPct: null,
+      nintendoGrowthPct: null,
+      updatedAt: null,
+    });
+    expect(out.sp500).toBeNull();
+    expect(out.bitcoin).toBeNull();
   });
 });

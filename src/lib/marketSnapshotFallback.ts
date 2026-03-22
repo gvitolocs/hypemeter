@@ -1,9 +1,12 @@
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
 
 /**
- * Last-known-good snapshot (aligned with [monmeter](https://monmeter.vercel.app/) delayed-style display).
- * Used only to **fill null fields** when Yahoo/Stooq time out or rate-limit (429).
- * Bump numbers occasionally or set `DISABLE_MARKET_SNAPSHOT_FALLBACK=1` to show raw nulls.
+ * Optional static numbers for demos only. **Not** applied in production by default — filling nulls
+ * with stale constants made the sidecar look “frozen” vs finance.yahoo.com.
+ *
+ * - Default: no static fill (nulls stay null → UI shows N/A).
+ * - `MARKET_SNAPSHOT_STATIC_FALLBACK=1` — fill nulls from {@link MARKET_SNAPSHOT_PAGE_FALLBACK}.
+ * - `DISABLE_MARKET_SNAPSHOT_FALLBACK=1` — same as default (explicit opt-out of static fill).
  */
 export const MARKET_SNAPSHOT_PAGE_FALLBACK: MarketSnapshot = {
   sp500: 6506.48,
@@ -30,6 +33,9 @@ function stampNow(): string {
  */
 export function applyMarketSnapshotFallback(snapshot: MarketSnapshot): MarketSnapshot {
   if (process.env.DISABLE_MARKET_SNAPSHOT_FALLBACK === "1") {
+    return snapshot;
+  }
+  if (process.env.MARKET_SNAPSHOT_STATIC_FALLBACK !== "1") {
     return snapshot;
   }
   const f = MARKET_SNAPSHOT_PAGE_FALLBACK;
