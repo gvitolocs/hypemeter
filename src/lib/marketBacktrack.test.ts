@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignYearSeries, normalizeTo100 } from "@/lib/marketBacktrack";
+import { alignYearSeries, normalizeTo100, parseStooqDailyHistoryToYearlyLastClose } from "@/lib/marketBacktrack";
 
 describe("marketBacktrack", () => {
   it("alignYearSeries uses placeholder when no Yahoo data (still drawable overlays)", () => {
@@ -25,5 +25,15 @@ describe("marketBacktrack", () => {
 
   it("normalizeTo100 maps min→0 and max→100", () => {
     expect(normalizeTo100([10, 20])).toEqual([0, 100]);
+  });
+
+  it("parseStooqDailyHistoryToYearlyLastClose keeps last close per year", () => {
+    const csv = `Date,Open,High,Low,Close,Volume
+2019-06-01,1,1,1,10,1
+2019-12-30,1,1,1,20,1
+2020-06-01,1,1,1,30,1`;
+    const m = parseStooqDailyHistoryToYearlyLastClose(csv);
+    expect(m.get(2019)).toBe(20);
+    expect(m.get(2020)).toBe(30);
   });
 });

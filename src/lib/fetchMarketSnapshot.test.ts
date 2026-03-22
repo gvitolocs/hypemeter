@@ -38,8 +38,14 @@ function jsonRes(data: unknown, ok = true): Response {
 describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
   const originalFetch = globalThis.fetch;
 
+  beforeEach(() => {
+    // Tests assert raw Yahoo/Stooq merge logic without monmeter page fallback numbers.
+    process.env.DISABLE_MARKET_SNAPSHOT_FALLBACK = "1";
+  });
+
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    delete process.env.DISABLE_MARKET_SNAPSHOT_FALLBACK;
     vi.restoreAllMocks();
   });
 

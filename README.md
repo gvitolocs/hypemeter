@@ -38,6 +38,10 @@ npm run start
 - **Unit tests** use **mock HTTP** responses — they do **not** call Yahoo live (`src/lib/marketSnapshot.test.ts`, `fetchMarketSnapshot.test.ts`, `marketBacktrack*.test.ts`).
 - `marketBacktrack.fetch.test.ts` mocks Yahoo **v8 chart** JSON and checks that overlay arrays match the year axis length.
 
+### Yahoo limits & fallbacks (details)
+
+See **[docs/MARKET_DATA.md](./docs/MARKET_DATA.md)** — rate limits, `DISABLE_MARKET_SNAPSHOT_FALLBACK`, Stooq merge for backtrack overlays.
+
 ## Recommended hosting
 
 For this stack, use **Vercel** first:

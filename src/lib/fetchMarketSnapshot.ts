@@ -8,6 +8,7 @@ import {
   parseStooqMetrics,
   parseYahooChartLastTwoCloses,
 } from "@/lib/marketSnapshot";
+import { applyMarketSnapshotFallback } from "@/lib/marketSnapshotFallback";
 
 const MARKET_QUOTES_URL =
   "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,BTC-USD,NTDOY";
@@ -139,7 +140,7 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
       }
     }
     if (sp500 !== null && bitcoin !== null) {
-      return {
+      return applyMarketSnapshotFallback({
         sp500,
         bitcoin,
         nintendo,
@@ -148,7 +149,7 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
         bitcoinGrowthPct,
         nintendoGrowthPct,
         updatedAt: stamp(),
-      };
+      });
     }
   } catch {
     // fallback below
@@ -211,7 +212,7 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
       }
     }
     if (sp500 !== null && bitcoin !== null) {
-      return {
+      return applyMarketSnapshotFallback({
         sp500,
         bitcoin,
         nintendo,
@@ -220,11 +221,11 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
         bitcoinGrowthPct,
         nintendoGrowthPct,
         updatedAt: stamp(),
-      };
+      });
     }
   } catch {
     // final fallback below
   }
 
-  return fallback;
+  return applyMarketSnapshotFallback(fallback);
 }

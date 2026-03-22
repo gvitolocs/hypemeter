@@ -15,6 +15,64 @@ export type MarketYearlyOverlay = {
 
 type YearlyCloseMap = Map<number, number>;
 
+const STOOQ_HIST_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+/** Last trading close per calendar year from Stooq daily CSV (header must include Date + Close). */
+export function parseStooqDailyHistoryToYearlyLastClose(csv: string): YearlyCloseMap {
+  const map: YearlyCloseMap = new Map();
+  const lines = csv
+    .trim()
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return map;
+  const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  let dateIdx = header.indexOf("date");
+  const closeIdx = header.indexOf("close");
+  if (closeIdx < 0) return map;
+  if (dateIdx < 0) dateIdx = 0;
+  const lastByYear = new Map<number, { dateStr: string; close: number }>();
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(",");
+    const dateStr = cols[dateIdx]?.trim();
+    const rawClose = cols[closeIdx]?.trim().replace(/^"|"$/g, "") ?? "";
+    const close = Number(rawClose);
+    if (!dateStr || Number.isNaN(close)) continue;
+    const y = new Date(dateStr).getFullYear();
+    if (Number.isNaN(y)) continue;
+    const prev = lastByYear.get(y);
+    if (!prev || dateStr > prev.dateStr) {
+      lastByYear.set(y, { dateStr, close });
+    }
+  }
+  for (const [year, v] of lastByYear) map.set(year, v.close);
+  return map;
+}
+
+/** Stooq fills gaps when Yahoo v8 monthly is empty or incomplete. Yahoo values win on year collisions. */
+function mergeYearlyMaps(yahoo: YearlyCloseMap, stooq: YearlyCloseMap): YearlyCloseMap {
+  const out = new Map<number, number>(stooq);
+  for (const [y, c] of yahoo) out.set(y, c);
+  return out;
+}
+
+async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<YearlyCloseMap> {
+  try {
+    const d1 = "20050101";
+    const d2 = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(stooqSymbol)}&d1=${d1}&d2=${d2}&i=d`;
+    const res = await fetch(url, {
+      next: { revalidate: 86400 },
+      headers: { "user-agent": STOOQ_HIST_UA },
+    });
+    if (!res.ok) return new Map();
+    return parseStooqDailyHistoryToYearlyLastClose(await res.text());
+  } catch {
+    return new Map();
+  }
+}
+
 async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
   const map: YearlyCloseMap = new Map();
   try {
@@ -96,11 +154,17 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
   if (years.length === 0) {
     return { sp500: [], btc: [], nintendo: [] };
   }
-  const [spMap, btcMap, ntMap] = await Promise.all([
+  const [spY, btcY, ntY, spS, btcS, ntS] = await Promise.all([
     fetchYahooYearlyCloses("^GSPC"),
     fetchYahooYearlyCloses("BTC-USD"),
     fetchYahooYearlyCloses("NTDOY"),
+    fetchStooqYearlyClosesBySymbol("^spx"),
+    fetchStooqYearlyClosesBySymbol("btcusd"),
+    fetchStooqYearlyClosesBySymbol("ntdoy.us"),
   ]);
+  const spMap = mergeYearlyMaps(spY, spS);
+  const btcMap = mergeYearlyMaps(btcY, btcS);
+  const ntMap = mergeYearlyMaps(ntY, ntS);
   const spAligned = alignYearSeries(years, spMap);
   const btcAligned = alignYearSeries(years, btcMap);
   const ntAligned = alignYearSeries(years, ntMap);
