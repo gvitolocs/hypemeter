@@ -2090,7 +2090,7 @@ export default async function Home() {
             </div>
           </div>
 
-          <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
+          <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900 p-7 hover-lift">
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
               {sentiments.map((sentiment) => (
                 <div
@@ -2112,15 +2112,15 @@ export default async function Home() {
                 </div>
               ))}
             </div>
-            <div className="mt-4 rounded-2xl border border-white/10 bg-slate-800/70 p-3">
+            <div className="mt-4 flex flex-1 flex-col rounded-2xl border border-white/10 bg-slate-800/70 p-3.5">
               <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
                 Social Signal Pulse
               </p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div className="mt-2 grid flex-1 auto-rows-fr gap-2 sm:grid-cols-2">
                 {platformGraph.map((platform, index) => (
                   <article
                     key={`compact-${platform.key}`}
-                    className={`rounded-xl border border-white/10 bg-slate-900 p-2.5 ${
+                    className={`flex h-full flex-col justify-between rounded-xl border border-white/10 bg-slate-900 p-3 ${
                       platformGraph.length % 2 === 1 && index === platformGraph.length - 1
                         ? "sm:col-span-2"
                         : ""
