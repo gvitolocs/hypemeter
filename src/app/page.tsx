@@ -1,3 +1,7 @@
+import HypeBacktrackingChart from "@/components/HypeBacktrackingChart";
+import DayStatsCalendar from "@/components/DayStatsCalendar";
+import Image from "next/image";
+
 type NewsItem = {
   title: string;
   link: string;
@@ -14,6 +18,14 @@ type SignalComponent = {
   group: "community" | "market";
 };
 
+type SentimentWindow = {
+  key: "1m" | "1y" | "5y";
+  label: string;
+  score: number;
+  tone: string;
+  explanation: string;
+};
+
 type YearScore = {
   year: number;
   score: number;
@@ -22,6 +34,8 @@ type YearScore = {
 type MarketSnapshot = {
   sp500: number | null;
   bitcoin: number | null;
+  sp500GrowthPct: number | null;
+  bitcoinGrowthPct: number | null;
   updatedAt: string | null;
 };
 
@@ -404,6 +418,115 @@ function labelForScore(score: number) {
   return { label: "DEAD", vibe: "Low attention and low market pressure." };
 }
 
+function buildThirtyYearCycle(currentYear: number) {
+  const start = currentYear - 29;
+  const cycle: YearScore[] = [];
+  const eventBoosts: Record<number, number> = {
+    1999: 10,
+    2006: 6,
+    2010: 8,
+    2016: 20,
+    2020: 16,
+    2021: 12,
+    2024: 8,
+    2025: 5,
+  };
+
+  for (let year = start; year <= currentYear; year += 1) {
+    let eraBase = 55;
+    if (year <= 2000) eraBase = 70; // original launch supercycle
+    else if (year <= 2005) eraBase = 42; // cooldown and post-initial saturation
+    else if (year <= 2010) eraBase = 54; // DP/HGSS-era revival
+    else if (year <= 2015) eraBase = 48; // steady pre-Pokemon GO regime
+    else if (year <= 2017) eraBase = 88; // Pokemon GO shock cycle
+    else if (year <= 2019) eraBase = 62; // normalization
+    else if (year <= 2021) eraBase = 85; // pandemic TCG boom
+    else if (year <= 2023) eraBase = 58; // correction and digestion
+    else eraBase = 70; // modern re-acceleration
+
+    const harmonicA = 7 * Math.sin((year - 1996) / 3.3);
+    const harmonicB = 4 * Math.cos((year - 1996) / 6.7);
+    const boost = eventBoosts[year] ?? 0;
+    cycle.push({
+      year,
+      score: clampScore(eraBase + harmonicA + harmonicB + boost),
+    });
+  }
+  return cycle;
+}
+
+function toneForSentiment(score: number) {
+  if (score >= 75) return "bullish";
+  if (score >= 55) return "constructive";
+  if (score >= 40) return "neutral";
+  return "defensive";
+}
+
+function computeWindowSentiments(args: {
+  score: number;
+  communityScore: number;
+  marketScore: number;
+  components: SignalComponent[];
+  cycle30: YearScore[];
+}) {
+  const { score, communityScore, marketScore, components, cycle30 } = args;
+  const last = cycle30[cycle30.length - 1]?.score ?? score;
+  const prev = cycle30[cycle30.length - 2]?.score ?? last;
+  const avg = (values: number[]) =>
+    values.length > 0
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : 0;
+  const last5 = avg(cycle30.slice(-5).map((y) => y.score));
+  const prev5 = avg(cycle30.slice(-10, -5).map((y) => y.score));
+  const cycleSlope = last - prev;
+
+  const component = (id: string) =>
+    components.find((entry) => entry.id === id)?.score ?? 50;
+
+  const monthImpulse =
+    component("search_interest") * 0.3 +
+    component("availability_pressure") * 0.25 +
+    component("release_catalyst") * 0.2 +
+    component("community_sentiment") * 0.15 +
+    component("product_stress") * 0.1;
+  const oneMonth = clampScore(score * 0.45 + monthImpulse * 0.45 + cycleSlope * 1.5 + 5);
+
+  const oneYearBase = avg(cycle30.slice(-3).map((y) => y.score));
+  const oneYear = clampScore(
+    score * 0.35 + oneYearBase * 0.35 + marketScore * 0.2 + communityScore * 0.1,
+  );
+
+  const cycleRegimeShift = last5 - prev5;
+  const fiveYear = clampScore(
+    last5 * 0.45 + marketScore * 0.25 + score * 0.2 + (50 + cycleRegimeShift * 3) * 0.1,
+  );
+
+  const windows: SentimentWindow[] = [
+    {
+      key: "1m",
+      label: "1 Month Sentiment",
+      score: oneMonth,
+      tone: toneForSentiment(oneMonth),
+      explanation: "Fast-cycle demand pressure from search, availability, and event triggers.",
+    },
+    {
+      key: "1y",
+      label: "1 Year Sentiment",
+      score: oneYear,
+      tone: toneForSentiment(oneYear),
+      explanation: "Current regime health blended with market/community balance.",
+    },
+    {
+      key: "5y",
+      label: "5 Year Sentiment",
+      score: fiveYear,
+      tone: toneForSentiment(fiveYear),
+      explanation: "Supercycle position using 30-year era model and 5-year trend shift.",
+    },
+  ];
+  return windows;
+}
+
 function meterColor(score: number) {
   if (score >= 70) return "from-fuchsia-500 via-red-500 to-orange-400";
   if (score >= 40) return "from-cyan-400 via-blue-500 to-purple-500";
@@ -449,19 +572,6 @@ function buildBacktrackSeries(liveScore: number): YearScore[] {
   return data;
 }
 
-function computeChartPoints(series: YearScore[], width: number, height: number) {
-  const padX = 20;
-  const padY = 18;
-  const safeWidth = width - padX * 2;
-  const safeHeight = height - padY * 2;
-
-  return series.map((entry, idx) => {
-    const x = padX + (idx / Math.max(series.length - 1, 1)) * safeWidth;
-    const y = padY + ((100 - entry.score) / 100) * safeHeight;
-    return { ...entry, x, y };
-  });
-}
-
 function formatUsd(value: number | null) {
   if (value === null || Number.isNaN(value)) {
     return "N/A";
@@ -473,19 +583,36 @@ function formatUsd(value: number | null) {
   }).format(value);
 }
 
+function formatGrowthPct(value: number | null) {
+  if (value === null || Number.isNaN(value)) {
+    return "N/A";
+  }
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}%`;
+}
+
 async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
   const fallback: MarketSnapshot = {
     sp500: null,
     bitcoin: null,
+    sp500GrowthPct: null,
+    bitcoinGrowthPct: null,
     updatedAt: null,
   };
 
-  const parseStooqClose = (csv: string) => {
+  const parseStooqMetrics = (csv: string) => {
     const line = csv.trim().split("\n")[0] ?? "";
     const cols = line.split(",");
-    if (cols.length < 7) return null;
+    if (cols.length < 7) return { close: null, growthPct: null };
+    const open = Number(cols[3]);
     const close = Number(cols[6]);
-    return Number.isNaN(close) ? null : close;
+    const validOpen = !Number.isNaN(open) && open > 0;
+    const validClose = !Number.isNaN(close);
+    const growthPct = validOpen && validClose ? ((close - open) / open) * 100 : null;
+    return {
+      close: validClose ? close : null,
+      growthPct,
+    };
   };
 
   try {
@@ -493,12 +620,16 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
       fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
       fetch(STOOQ_BTC_URL, { next: { revalidate: 900 } }),
     ]);
-    const sp500 = spRes.ok ? parseStooqClose(await spRes.text()) : null;
-    const bitcoin = btcRes.ok ? parseStooqClose(await btcRes.text()) : null;
+    const spx = spRes.ok ? parseStooqMetrics(await spRes.text()) : { close: null, growthPct: null };
+    const btc = btcRes.ok ? parseStooqMetrics(await btcRes.text()) : { close: null, growthPct: null };
+    const sp500 = spx.close;
+    const bitcoin = btc.close;
     if (sp500 !== null && bitcoin !== null) {
       return {
         sp500,
         bitcoin,
+        sp500GrowthPct: spx.growthPct,
+        bitcoinGrowthPct: btc.growthPct,
         updatedAt: new Date().toLocaleString("en-US", {
           dateStyle: "medium",
           timeStyle: "short",
@@ -527,14 +658,21 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     const yahooData = yahooRes.ok
       ? ((await yahooRes.json()) as {
           quoteResponse?: {
-            result?: Array<{ symbol?: string; regularMarketPrice?: number }>;
+            result?: Array<{
+              symbol?: string;
+              regularMarketPrice?: number;
+              regularMarketChangePercent?: number;
+            }>;
           };
         })
       : {};
-    const sp500 = parseStooqClose(spText);
-    const yahooBtc =
-      yahooData.quoteResponse?.result?.find((entry) => entry.symbol === "BTC-USD")
-        ?.regularMarketPrice ?? null;
+    const spx = parseStooqMetrics(spText);
+    const sp500 = spx.close;
+    const yahooBtcEntry = yahooData.quoteResponse?.result?.find(
+      (entry) => entry.symbol === "BTC-USD",
+    );
+    const yahooBtc = yahooBtcEntry?.regularMarketPrice ?? null;
+    const yahooBtcGrowth = yahooBtcEntry?.regularMarketChangePercent ?? null;
     const bitcoin = btcData.bitcoin?.usd ?? yahooBtc;
     const hasValues =
       sp500 !== null && !Number.isNaN(sp500) && bitcoin !== null && !Number.isNaN(bitcoin);
@@ -543,6 +681,8 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
       return {
         sp500,
         bitcoin,
+        sp500GrowthPct: spx.growthPct,
+        bitcoinGrowthPct: yahooBtcGrowth,
         updatedAt: new Date().toLocaleString("en-US", {
           dateStyle: "medium",
           timeStyle: "short",
@@ -590,23 +730,61 @@ export default async function Home() {
     eventCatalyst,
     communitySentiment,
   });
+  const cycle30 = buildThirtyYearCycle(new Date().getFullYear());
+  const sentiments = computeWindowSentiments({
+    score,
+    communityScore,
+    marketScore,
+    components: indicators,
+    cycle30,
+  });
   const market = await fetchMarketSnapshot();
   const mood = labelForScore(score);
   const history = buildBacktrackSeries(score);
-  const chartWidth = 940;
-  const chartHeight = 250;
-  const points = computeChartPoints(history, chartWidth, chartHeight);
-  const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
 
   const updatedAt = new Date().toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   });
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: "Pokemon Hype Meter",
+    applicationCategory: "FinanceApplication",
+    operatingSystem: "Web",
+    url: "https://hypemeter-giuseppevitolo17s-projects.vercel.app/",
+    description:
+      "Composite Pokemon hype index based on search demand, market momentum, availability pressure, event catalysts, and community sentiment.",
+    publisher: {
+      "@type": "Organization",
+      name: "Pokemon Hype Meter",
+    },
+    featureList: [
+      "Pokemon TCG market momentum tracking",
+      "Search interest and sentiment monitoring",
+      "Availability pressure and catalyst scoring",
+      "Interactive historical hype chart",
+      "Daily event calendar with runtime stats",
+    ],
+    dateModified: new Date().toISOString(),
+  };
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <header className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur">
+        <header className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur">
+          <Image
+            src="/images/hype-orb.svg"
+            alt="Decorative Pokemon hype orb"
+            width={380}
+            height={214}
+            className="pointer-events-none absolute -right-8 -top-10 hidden opacity-75 lg:block"
+            priority
+          />
           <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
             Pokemon Fear & Greed Remix
           </p>
@@ -672,9 +850,37 @@ export default async function Home() {
                 </p>
               </div>
             </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              {sentiments.map((sentiment) => (
+                <div
+                  key={sentiment.key}
+                  className="rounded-xl border border-white/10 bg-slate-800 p-3"
+                >
+                  <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
+                    {sentiment.label}
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-white">
+                    {sentiment.score}/100
+                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cyan-300">
+                    {sentiment.tone}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {sentiment.explanation}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-slate-900 p-6">
+          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900 p-6">
+            <Image
+              src="/images/hype-spark.svg"
+              alt="Decorative spark"
+              width={88}
+              height={88}
+              className="pointer-events-none absolute right-4 top-4 opacity-50"
+            />
             <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
               How this meter works
             </h3>
@@ -710,55 +916,18 @@ export default async function Home() {
             </p>
           </div>
           <div className="mt-4 grid gap-4 lg:grid-cols-[1.5fr_0.7fr]">
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-3">
-              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full">
-                {[20, 40, 60, 80].map((tick) => {
-                  const y = 18 + ((100 - tick) / 100) * (chartHeight - 36);
-                  return (
-                    <line
-                      key={tick}
-                      x1="20"
-                      x2={chartWidth - 20}
-                      y1={y}
-                      y2={y}
-                      stroke="rgba(148, 163, 184, 0.2)"
-                      strokeDasharray="4 4"
-                    />
-                  );
-                })}
-                <polyline
-                  fill="none"
-                  stroke="rgba(34, 211, 238, 0.9)"
-                  strokeWidth="4"
-                  points={polyline}
-                />
-                {points.map((point) => (
-                  <circle
-                    key={point.year}
-                    cx={point.x}
-                    cy={point.y}
-                    r={point.year % 5 === 0 ? 4.5 : 3}
-                    fill={
-                      point.year === history[history.length - 1].year
-                        ? "#f472b6"
-                        : "#22d3ee"
-                    }
-                  />
-                ))}
-              </svg>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-                <span>{history[0]?.year}</span>
-                <span>{history[Math.floor(history.length / 4)]?.year}</span>
-                <span>{history[Math.floor(history.length / 2)]?.year}</span>
-                <span>{history[Math.floor((history.length * 3) / 4)]?.year}</span>
-                <span>{history[history.length - 1]?.year}</span>
-              </div>
-            </div>
-            <aside className="rounded-2xl border border-white/10 bg-slate-950 p-4">
+            <HypeBacktrackingChart history={history} />
+            <aside className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-4">
+              <Image
+                src="/images/hype-wave.svg"
+                alt="Decorative market wave"
+                width={360}
+                height={84}
+                className="pointer-events-none absolute -right-12 -top-8 opacity-35"
+              />
               <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
                 Market Sidecar
               </p>
-              <p className="mt-1 text-xs text-slate-500">USD quotes</p>
 
               <div className="mt-4 space-y-3">
                 <div className="rounded-xl border border-white/10 bg-slate-900 p-3">
@@ -766,7 +935,10 @@ export default async function Home() {
                     S&P 500
                   </p>
                   <p className="mt-1 text-2xl font-bold text-cyan-300">
-                    {formatUsd(market.sp500)}
+                    {formatGrowthPct(market.sp500GrowthPct)}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    level: {formatUsd(market.sp500)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-slate-900 p-3">
@@ -774,7 +946,10 @@ export default async function Home() {
                     Bitcoin
                   </p>
                   <p className="mt-1 text-2xl font-bold text-amber-300">
-                    {formatUsd(market.bitcoin)}
+                    {formatGrowthPct(market.bitcoinGrowthPct)}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    level: {formatUsd(market.bitcoin)}
                   </p>
                 </div>
               </div>
@@ -823,6 +998,8 @@ export default async function Home() {
             ))}
           </div>
         </section>
+
+        <DayStatsCalendar />
 
         <section className="rounded-3xl border border-white/10 bg-slate-900 p-6">
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
