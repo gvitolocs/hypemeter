@@ -1,30 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { DayStatsResponse } from "@/lib/dayCalendarTypes";
+import {
+  emptyPersisted,
+  loadDayCalendarPersisted,
+  mergeDayPayload,
+  saveDayCalendarPersisted,
+  type DayCalendarPersisted,
+} from "@/lib/dayCalendarCache";
 
-type DayStatsResponse = {
-  date: string;
-  stats: {
-    headlineCount: number;
-    uniqueSources: number;
-    eventHits: number;
-    pressureHits: number;
-    sentiment: number;
-    dayScore: number;
-    signalQuality?: number;
-    eventSignals?: Array<{
-      label: string;
-      group: string;
-      weight: number;
-    }>;
-  };
-  headlines: Array<{
-    title: string;
-    link: string;
-    source: string;
-    pubDate: string;
-  }>;
-};
+export type { DayStatsResponse };
 
 type Props = {
   initialData?: DayStatsResponse;
@@ -33,7 +19,6 @@ type Props = {
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-// Standard yyyy-mm-dd format expected by the day-stats API.
 function isoDate(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -45,7 +30,6 @@ function startOfLocalDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-// Month navigation helper anchored to first day to avoid overflow quirks.
 function addMonths(date: Date, amount: number) {
   const copy = new Date(date);
   copy.setDate(1);
@@ -53,20 +37,77 @@ function addMonths(date: Date, amount: number) {
   return copy;
 }
 
+/** ISO dates in the visible month that fall inside [minDate, now]. */
+function isoDatesInMonthWindow(visibleMonth: Date, minDate: Date, now: Date): string[] {
+  const last = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0);
+  const out: string[] = [];
+  for (let d = 1; d <= last.getDate(); d++) {
+    const date = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), d);
+    if (date < startOfLocalDay(minDate)) continue;
+    if (date > now) continue;
+    out.push(isoDate(date));
+  }
+  return out;
+}
+
+/** Heatmap: higher dayScore → warmer / brighter. */
+function heatmapClasses(score: number | undefined, selected: boolean): string {
+  const base =
+    score === undefined
+      ? "bg-slate-800/95 text-slate-500"
+      : score < 22
+        ? "bg-slate-900 text-slate-500"
+        : score < 38
+          ? "bg-slate-800 text-slate-400"
+          : score < 52
+            ? "bg-slate-700/90 text-slate-300"
+            : score < 64
+              ? "bg-cyan-950/55 text-cyan-400/95"
+              : score < 76
+                ? "bg-cyan-900/40 text-cyan-200"
+                : score < 88
+                  ? "bg-emerald-900/35 text-emerald-200"
+                  : "bg-fuchsia-900/45 text-fuchsia-100";
+
+  const ring = selected ? "ring-2 ring-cyan-400 ring-offset-2 ring-offset-slate-950 z-[1]" : "";
+  return `${base} ${ring}`;
+}
+
 export default function DayStatsCalendar({ initialData, initialDate }: Props) {
-  // Calendar is intentionally restricted to the last 5 years.
   const now = startOfLocalDay(new Date());
   const minDate = new Date(now);
   minDate.setFullYear(minDate.getFullYear() - 5);
 
+  const todayIso = isoDate(now);
+
   const [visibleMonth, setVisibleMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState(initialDate ?? isoDate(now));
+  const [selectedDate, setSelectedDate] = useState(initialDate ?? todayIso);
   const [data, setData] = useState<DayStatsResponse | null>(initialData ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [persisted, setPersisted] = useState<DayCalendarPersisted>(() => emptyPersisted());
+  const [hydrated, setHydrated] = useState(false);
+  const prefetchGen = useRef(0);
 
-  // Fetch selected-day stats; keeps UI robust with loading/error state transitions.
+  useEffect(() => {
+    setPersisted(loadDayCalendarPersisted());
+    setHydrated(true);
+  }, []);
+
+  const persist = useCallback((next: DayCalendarPersisted) => {
+    setPersisted(next);
+    saveDayCalendarPersisted(next);
+  }, []);
+
   const loadDay = useCallback(async (date: string) => {
+    const cached = loadDayCalendarPersisted();
+    if (date < todayIso && cached.days[date]) {
+      setData(cached.days[date]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     let active = true;
     setLoading(true);
     setError(null);
@@ -77,19 +118,22 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
         throw new Error(payload.error ?? "Failed loading daily stats");
       }
       const payload = (await res.json()) as DayStatsResponse;
-      if (active) setData(payload);
+      if (!active) return;
+      setData(payload);
+      const freezePast = date < todayIso;
+      setPersisted((prev) => {
+        const merged = mergeDayPayload(prev, date, payload, freezePast);
+        saveDayCalendarPersisted(merged);
+        return merged;
+      });
     } catch (err: unknown) {
       if (active) setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       if (active) setLoading(false);
     }
-    return () => {
-      active = false;
-    };
-  }, []);
+  }, [todayIso]);
 
   useEffect(() => {
-    // Keep today's preload (matching homepage hype model) without immediate refetch.
     if (initialData && selectedDate === initialData.date) {
       setData(initialData);
       setLoading(false);
@@ -99,7 +143,60 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
     void loadDay(selectedDate);
   }, [initialData, loadDay, selectedDate]);
 
-  // Build a complete month grid (including leading/trailing days for alignment).
+  /** Backfill month heatmap: fetch missing scores (reads latest cache from storage each run). */
+  useEffect(() => {
+    if (!hydrated) return;
+    const gen = ++prefetchGen.current;
+    let cancelled = false;
+    const concurrency = 2;
+
+    (async () => {
+      const attempted = new Set<string>();
+      while (!cancelled && prefetchGen.current === gen) {
+        const p = loadDayCalendarPersisted();
+        const dates = isoDatesInMonthWindow(visibleMonth, minDate, now);
+        const missing = dates.filter((d) => p.scores[d] === undefined && !attempted.has(d));
+        if (missing.length === 0) break;
+        const slice = missing.slice(0, concurrency);
+        for (const d of slice) attempted.add(d);
+        await Promise.all(
+          slice.map(async (date) => {
+            try {
+              const res = await fetch(`/api/day-stats?date=${date}`, { cache: "no-store" });
+              if (!res.ok) return;
+              const payload = (await res.json()) as DayStatsResponse;
+              if (cancelled || prefetchGen.current !== gen) return;
+              const freezePast = date < todayIso;
+              setPersisted((prev) => {
+                const merged = mergeDayPayload(prev, date, payload, freezePast);
+                saveDayCalendarPersisted(merged);
+                return merged;
+              });
+            } catch {
+              /* ignore single-day failures */
+            }
+          }),
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, visibleMonth, minDate, now, todayIso]);
+
+  /** Seed cache from initial home payload (today). */
+  useEffect(() => {
+    if (!initialData || !hydrated) return;
+    const d = initialData.date;
+    setPersisted((prev) => {
+      if (prev.scores[d] !== undefined && prev.days[d]) return prev;
+      const merged = mergeDayPayload(prev, d, initialData, d < todayIso);
+      saveDayCalendarPersisted(merged);
+      return merged;
+    });
+  }, [hydrated, initialData, todayIso]);
+
   const daysGrid = useMemo(() => {
     const firstDay = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
     const lastDay = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0);
@@ -148,7 +245,7 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
             Daily Event Calendar (Last 5 Years)
           </h3>
           <p className="mt-1 text-xs text-slate-400">
-            Click a day to compute live Pokemon event stats for that date.
+            Past days are saved in your browser; numbers show day score intensity. Click for full detail.
           </p>
         </div>
       </div>
@@ -188,6 +285,7 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
               const inMonth = date.getMonth() === visibleMonth.getMonth();
               const outOfRange = date < minDate || date > now;
               const selected = key === selectedDate;
+              const score = persisted.scores[key];
               return (
                 <button
                   type="button"
@@ -196,17 +294,23 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
                   onClick={() => {
                     setSelectedDate(key);
                   }}
-                  className={`h-8 rounded-md text-xs transition ${
-                    selected
-                      ? "bg-cyan-500/80 text-slate-950 font-bold"
-                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                  } ${(!inMonth || outOfRange) ? "opacity-30 cursor-not-allowed" : ""}`}
+                  className={`flex min-h-[2.6rem] flex-col items-center justify-center rounded-md px-0.5 py-1 text-[10px] transition hover:brightness-110 ${heatmapClasses(score, selected)} ${
+                    !inMonth || outOfRange ? "cursor-not-allowed opacity-30 hover:brightness-100" : ""
+                  }`}
                 >
-                  {date.getDate()}
+                  <span className={`leading-none ${selected ? "font-bold" : "font-semibold"}`}>
+                    {date.getDate()}
+                  </span>
+                  <span className="mt-0.5 font-mono text-[9px] leading-none tabular-nums opacity-95">
+                    {outOfRange || !inMonth ? "" : score === undefined ? "·" : score}
+                  </span>
                 </button>
               );
             })}
           </div>
+          <p className="mt-2 text-[10px] text-slate-500">
+            · = loading score. Scores persist locally; past days won&apos;t change after first load.
+          </p>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-slate-950 p-4">
@@ -303,4 +407,3 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
     </section>
   );
 }
-

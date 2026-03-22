@@ -1,13 +1,15 @@
 import BacktrackMarketSection from "@/components/BacktrackMarketSection";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
+import { HomePageClientCacheWriter } from "@/components/HomePageClientCacheWriter";
 import HypeGauge from "@/components/HypeGauge";
 import ScrollReveal from "@/components/ScrollReveal";
 import { fetchMarketYearlyOverlay } from "@/lib/marketBacktrack";
 import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
+import { HOME_PAGE_DATA_CACHE_TTL_SEC } from "@/lib/homePageCacheConfig";
 import { logTimingTotal, timedAsync } from "@/lib/serverTiming";
 import Image from "next/image";
-import { unstable_noStore as noStore } from "next/cache";
+import { unstable_cache } from "next/cache";
 
 type NewsItem = {
   title: string;
@@ -171,6 +173,9 @@ const LIVE_EVENT_SIGNAL_PATTERNS: Array<{ label: string; group: string; weight: 
   { label: "Competitive Circuit", group: "community", weight: 1.5, regex: /\bvgc|regional|world championship|tournament\b/i },
   { label: "Community Volatility", group: "sentiment", weight: 1.4, regex: /\bcontroversy|backlash|debate|mixed reactions\b/i },
 ];
+
+/** Max pills in the “Live Event Signals” row (extras still count toward scoring). */
+const LIVE_EVENT_SIGNALS_UI_MAX = 6;
 
 const CONTEXTUAL_SIGNAL_PATTERNS: Array<{
   label: string;
@@ -1856,8 +1861,7 @@ function buildTodayCalendarStats(
 }
 
 
-export default async function Home() {
-  noStore();
+async function loadHomePageDataUncached() {
   const homeWallStart = performance.now();
   // Defensive defaults keep the page renderable even on upstream failures.
   let items: NewsItem[] = [];
@@ -2044,6 +2048,76 @@ export default async function Home() {
 
   logTimingTotal("home:totalWallTime", performance.now() - homeWallStart);
 
+  const computedAt = Date.now();
+
+  return {
+    cacheMeta: { computedAt },
+    items,
+    searchStats,
+    socialTraffic,
+    searchInterest,
+    marketMomentum,
+    eventCatalyst,
+    communitySentiment,
+    market,
+    score,
+    indicators,
+    communityScore,
+    marketScore,
+    sentiments,
+    cycle30,
+    history,
+    marketOverlay,
+    pokemonCatalog,
+    cardTraderBestSeller,
+    todayCalendarStats,
+    liveEventSignals,
+    liveSignalQuality,
+    topArticles,
+    platformGraph,
+    pokemonOfDay,
+    pokemonOfDayWinnerSlug,
+    pokemonOfDayArticle,
+    traderNarrative,
+    updatedAt,
+    structuredData,
+  };
+}
+
+export const loadHomePageData = unstable_cache(loadHomePageDataUncached, ["hypemeter-home-v1"], {
+  revalidate: HOME_PAGE_DATA_CACHE_TTL_SEC,
+});
+
+/** Uncached pipeline — use from `/debug` timing or when bypassing Data Cache. */
+export { loadHomePageDataUncached };
+
+export default async function Home() {
+  const {
+    cacheMeta,
+    items,
+    socialTraffic,
+    searchInterest,
+    market,
+    score,
+    indicators,
+    communityScore,
+    marketScore,
+    sentiments,
+    history,
+    marketOverlay,
+    cardTraderBestSeller,
+    todayCalendarStats,
+    liveEventSignals,
+    liveSignalQuality,
+    topArticles,
+    platformGraph,
+    pokemonOfDay,
+    pokemonOfDayArticle,
+    traderNarrative,
+    updatedAt,
+    structuredData,
+  } = await loadHomePageData();
+
   return (
     <main className="relative min-h-screen min-w-0 max-w-full overflow-x-clip bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">
       <div className="ambient-orb orb-a" />
@@ -2051,6 +2125,13 @@ export default async function Home() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      <HomePageClientCacheWriter
+        payload={{
+          score,
+          updatedAt,
+          computedAt: cacheMeta.computedAt,
+        }}
       />
       <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 xl:max-w-7xl 2xl:max-w-[min(92rem,100%)]">
         <ScrollReveal>
@@ -2213,7 +2294,7 @@ export default async function Home() {
                 </p>
                 <div className="mt-2 flex min-h-0 max-h-24 flex-1 flex-wrap content-start gap-1.5 overflow-y-auto overflow-x-hidden pr-1 sm:max-h-28 lg:max-h-none">
                   {liveEventSignals.length > 0 ? (
-                    liveEventSignals.map((signal) => (
+                    liveEventSignals.slice(0, LIVE_EVENT_SIGNALS_UI_MAX).map((signal) => (
                       <span
                         key={`${signal.group}-${signal.label}`}
                         className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] text-fuchsia-200"

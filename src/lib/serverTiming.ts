@@ -4,12 +4,46 @@
  *
  * - Set `DEBUG_PAGE_TIMING=1` (Vercel env) to log **every** section duration.
  * - Slow sections (default ≥ `warnMs`, default 10s) always log as `console.warn` so they show in production logs.
+ * - `runWithTimingCollector` (used by `/debug`) collects the same labels for an HTML table (no extra logging).
  */
+
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const DEFAULT_WARN_MS = 10_000;
 
+export type TimingSpan = { label: string; ms: number };
+
+type TimingStore = { spans: TimingSpan[] };
+
+const timingCollector = new AsyncLocalStorage<TimingStore>();
+
 function shouldLogAll(): boolean {
   return process.env.DEBUG_PAGE_TIMING === "1" || process.env.NODE_ENV === "development";
+}
+
+function pushSpan(label: string, ms: number): void {
+  const store = timingCollector.getStore();
+  if (store) {
+    store.spans.push({ label, ms });
+  }
+}
+
+/**
+ * Runs the same async work as a route but records every `timedAsync` / `logTimingTotal` span for `/debug`.
+ */
+export async function runWithTimingCollector<T>(fn: () => Promise<T>): Promise<{
+  result: T;
+  spans: TimingSpan[];
+  totalMs: number;
+}> {
+  const spans: TimingSpan[] = [];
+  const wallStart = performance.now();
+  const result = await timingCollector.run({ spans }, fn);
+  return {
+    result,
+    spans: [...spans],
+    totalMs: Math.round(performance.now() - wallStart),
+  };
 }
 
 /**
@@ -27,6 +61,7 @@ export async function timedAsync<T>(
   } finally {
     const ms = performance.now() - t0;
     const rounded = Math.round(ms);
+    pushSpan(label, rounded);
     const line = `${label} ${rounded}ms`;
     if (ms >= warnMs) {
       console.warn(line);
@@ -44,6 +79,7 @@ export async function timedAsyncWithMs<T>(label: string, fn: () => Promise<T>): 
   const result = await fn();
   const ms = performance.now() - t0;
   const rounded = Math.round(ms);
+  pushSpan(label, rounded);
   const line = `${label} ${rounded}ms`;
   if (ms >= DEFAULT_WARN_MS) {
     console.warn(line);
@@ -56,6 +92,7 @@ export async function timedAsyncWithMs<T>(label: string, fn: () => Promise<T>): 
 /** Call once at end of a route handler for end-to-end wall time. */
 export function logTimingTotal(label: string, elapsedMs: number, warnMs: number = DEFAULT_WARN_MS): void {
   const rounded = Math.round(elapsedMs);
+  pushSpan(label, rounded);
   const line = `${label} ${rounded}ms`;
   if (elapsedMs >= warnMs) {
     console.warn(line);
