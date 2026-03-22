@@ -1600,6 +1600,11 @@ function pickArticleOfDay(items: NewsItem[], pokemonCatalog: string[]): PokemonO
       return { item, score: scoreArticleRelevance(item) + mentionBoost, mentions };
     })
     .sort((a, b) => {
+      const ha = hoursAgo(a.item.pubDate);
+      const hb = hoursAgo(b.item.pubDate);
+      const recentA = ha <= 24 ? 1 : 0;
+      const recentB = hb <= 24 ? 1 : 0;
+      if (recentB !== recentA) return recentB - recentA;
       const tb = pubDateMs(b.item);
       const ta = pubDateMs(a.item);
       if (tb !== ta) return tb - ta;
@@ -1631,74 +1636,34 @@ function hashStringToRange(input: string, min: number, max: number) {
 }
 
 /**
- * Rank Pokémon slugs by weighted mentions across RSS (recency-weighted).
- * Title + summary only (no article HTML).
+ * Calendar YYYY-MM-DD in an IANA time zone so “Pokémon of the day” changes at local midnight,
+ * not on every page rebuild / RSS refresh.
  */
-function computeFeedWidePokemonLeaderboard(items: NewsItem[], catalog: string[]): string[] {
-  if (items.length === 0 || catalog.length === 0) return [];
-  /** Weighted presence so older headlines don't drive "today" as much as fresh ones. */
-  const articleWeight = new Map<string, number>();
-  const weightedTotal = new Map<string, number>();
-
-  for (const item of items) {
-    const hours = hoursAgo(item.pubDate);
-    const recency = Math.max(0.22, Math.exp(-hours / 96));
-    const ranked = rankPokemonMatchesFromSources(
-      [
-        { text: item.title, weight: 3 },
-        { text: item.summary, weight: 2 },
-      ],
-      catalog,
-    );
-    const seenInArticle = new Set<string>();
-    for (const entry of ranked) {
-      if (entry.score < FEED_POKEMON_MENTION_FLOOR) continue;
-      weightedTotal.set(
-        entry.name,
-        (weightedTotal.get(entry.name) ?? 0) + entry.score * recency,
-      );
-      if (!seenInArticle.has(entry.name)) {
-        seenInArticle.add(entry.name);
-        articleWeight.set(entry.name, (articleWeight.get(entry.name) ?? 0) + recency);
-      }
-    }
-  }
-
-  const names = [...articleWeight.keys()];
-  if (names.length === 0) return [];
-  names.sort((a, b) => {
-    const ca = articleWeight.get(a) ?? 0;
-    const cb = articleWeight.get(b) ?? 0;
-    if (cb !== ca) return cb - ca;
-    return (weightedTotal.get(b) ?? 0) - (weightedTotal.get(a) ?? 0);
+function calendarDateIsoInTimeZone(timeZone: string): string {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   });
-  return names;
-}
-
-/** Keep leaderboard order; only species still mentioned in headlines newer than `maxHours`. */
-function filterLeaderboardByRecentPresence(
-  items: NewsItem[],
-  catalog: string[],
-  leaderboard: string[],
-  maxHours = 72,
-): string[] {
-  if (leaderboard.length === 0) return [];
-  const kept = leaderboard.filter((slug) =>
-    items.some(
-      (item) => hoursAgo(item.pubDate) <= maxHours && articleMentionsPokemonSlug(item, slug, catalog),
-    ),
-  );
-  return kept.length > 0 ? kept : leaderboard;
+  const parts = formatter.formatToParts(new Date());
+  const y = parts.find((p) => p.type === "year")?.value;
+  const m = parts.find((p) => p.type === "month")?.value;
+  const d = parts.find((p) => p.type === "day")?.value;
+  if (!y || !m || !d) {
+    return new Date().toISOString().slice(0, 10);
+  }
+  return `${y}-${m}-${d}`;
 }
 
 /**
- * One PoD per calendar day: rotate among the top-N feed leaders so #1 (e.g. Hoppip) doesn't own every day.
+ * One species per calendar day: hash(date + stable Pokédex order). RSS does not change the featured Pokémon.
  */
-function pickDailyPokemonSlugFromLeaderboard(leaderboard: string[], dateIso: string): string | null {
-  if (leaderboard.length === 0) return null;
-  const poolSize = Math.min(8, leaderboard.length);
-  const idx = hashStringToRange(`${dateIso}|pokemon-of-day`, 0, poolSize - 1);
-  return leaderboard[idx] ?? null;
+function pickDailyPokemonSlugFromCatalog(catalog: string[], dateIso: string): string | null {
+  if (catalog.length === 0) return null;
+  const sorted = [...catalog].sort((a, b) => a.localeCompare(b, "en"));
+  const idx = hashStringToRange(`${dateIso}|pokemon-of-day`, 0, sorted.length - 1);
+  return sorted[idx] ?? null;
 }
 
 function articleMentionsPokemonSlug(item: NewsItem, slug: string, catalog: string[]): boolean {
@@ -1723,6 +1688,11 @@ function pickSpotlightArticleForPokemon(
     }))
     .filter((row) => row.hit)
     .sort((a, b) => {
+      const ha = hoursAgo(a.item.pubDate);
+      const hb = hoursAgo(b.item.pubDate);
+      const recentA = ha <= 24 ? 1 : 0;
+      const recentB = hb <= 24 ? 1 : 0;
+      if (recentB !== recentA) return recentB - recentA;
       const tb = pubDateMs(b.item);
       const ta = pubDateMs(a.item);
       if (tb !== ta) return tb - ta;
@@ -1744,22 +1714,16 @@ function pickSpotlightArticleForPokemon(
 }
 
 async function resolvePokemonOfDay(
-  items: NewsItem[],
+  _items: NewsItem[],
   catalog: string[],
 ): Promise<{ pokemon: PokemonOfDay | null; winnerSlug: string | null }> {
-  const dateIso = new Date().toISOString().slice(0, 10);
-  const leaderboard = computeFeedWidePokemonLeaderboard(items, catalog);
-  const pool = filterLeaderboardByRecentPresence(items, catalog, leaderboard);
-  const winnerSlug = pickDailyPokemonSlugFromLeaderboard(pool, dateIso);
+  const dateIso = calendarDateIsoInTimeZone("Europe/Rome");
+  const winnerSlug = pickDailyPokemonSlugFromCatalog(catalog, dateIso);
   if (winnerSlug) {
     const pokemon = await fetchPokemonByIdentifier(winnerSlug);
     if (pokemon) return { pokemon, winnerSlug };
   }
-  const fallbackId = hashStringToRange(
-    items.map((i) => `${i.title}|${i.pubDate}`).join("||"),
-    1,
-    1025,
-  );
+  const fallbackId = hashStringToRange(`${dateIso}|pod-fallback`, 1, 1025);
   const pokemon = await fetchPokemonByIdentifier(fallbackId);
   return { pokemon, winnerSlug: null };
 }
