@@ -2060,7 +2060,7 @@ export default async function Home() {
     name: "Pokemon Hype Meter",
     applicationCategory: "FinanceApplication",
     operatingSystem: "Web",
-    url: "https://hypemeter-giuseppevitolo17s-projects.vercel.app/",
+    url: "https://monmeter.vercel.app/",
     description:
       "Composite Pokemon hype index based on search demand, market momentum, availability pressure, event catalysts, and community sentiment.",
     publisher: {

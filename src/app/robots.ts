@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = "https://hypemeter-giuseppevitolo17s-projects.vercel.app";
+  const baseUrl = "https://monmeter.vercel.app";
 
   return {
     rules: [

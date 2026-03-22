@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://hypemeter-giuseppevitolo17s-projects.vercel.app"),
+  metadataBase: new URL("https://monmeter.vercel.app"),
   title: {
     default: "Pokemon Hype Meter",
     template: "%s | Pokemon Hype Meter",
