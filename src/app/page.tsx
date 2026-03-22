@@ -1853,7 +1853,12 @@ export default async function Home() {
                     based on source diversity, coverage, and signal density
                   </p>
                 </div>
-                <p className="mt-2 text-[11px] text-slate-400">
+              </div>
+              <div className="rounded-xl border border-cyan-400/25 bg-slate-800/90 p-3 hover-lift sm:col-span-2">
+                <p className="text-xs uppercase tracking-[0.12em] text-cyan-300">
+                  Model Weights
+                </p>
+                <p className="mt-1 text-[11px] text-slate-300">
                   Composite index with 6 weighted components: Search Interest (30%),
                   Market Momentum (20%), Availability Pressure (17%), Event Catalyst (13%),
                   Community Sentiment (10%), Product Stress (10%).
