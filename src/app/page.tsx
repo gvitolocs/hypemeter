@@ -1,6 +1,7 @@
 import HypeBacktrackingChart from "@/components/HypeBacktrackingChart";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
 import ScrollReveal from "@/components/ScrollReveal";
+import Image from "next/image";
 
 type NewsItem = {
   title: string;
@@ -66,6 +67,13 @@ type TimelineEventSignal = {
   year: number;
   label: string;
   intensity: number;
+};
+
+type PokemonOfDay = {
+  id: number;
+  name: string;
+  image: string | null;
+  types: string[];
 };
 
 // Revalidate the server-rendered homepage every 30 minutes.
@@ -815,6 +823,56 @@ function formatGrowthPct(value: number | null) {
   return `${sign}${value.toFixed(2)}%`;
 }
 
+function titleCase(value: string) {
+  return value
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function dayOfYearUtc(date: Date) {
+  const start = Date.UTC(date.getUTCFullYear(), 0, 0);
+  const current = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return Math.floor((current - start) / (1000 * 60 * 60 * 24));
+}
+
+// Deterministic daily Pokemon pick (changes once per UTC day).
+async function fetchPokemonOfDay(): Promise<PokemonOfDay | null> {
+  const maxDex = 1025;
+  const today = new Date();
+  const pickId = ((dayOfYearUtc(today) - 1) % maxDex) + 1;
+  const url = `https://pokeapi.co/api/v2/pokemon/${pickId}`;
+
+  try {
+    const res = await fetch(url, { next: { revalidate: 86400 } });
+    if (!res.ok) return null;
+    const payload = (await res.json()) as {
+      id: number;
+      name: string;
+      sprites?: {
+        other?: {
+          "official-artwork"?: {
+            front_default?: string | null;
+          };
+        };
+      };
+      types?: Array<{ type?: { name?: string } }>;
+    };
+
+    return {
+      id: payload.id,
+      name: titleCase(payload.name),
+      image: payload.sprites?.other?.["official-artwork"]?.front_default ?? null,
+      types: (payload.types ?? [])
+        .map((entry) => entry.type?.name ?? "")
+        .filter(Boolean)
+        .map((name) => titleCase(name)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Build the initial calendar payload for "today" so it renders immediately on first load.
 function buildTodayCalendarStats(items: NewsItem[], liveHypeScore: number): CalendarDayStats {
   const today = new Date().toISOString().slice(0, 10);
@@ -1016,6 +1074,7 @@ export default async function Home() {
   const history = buildBacktrackSeries(score);
   const todayCalendarStats = buildTodayCalendarStats(items.slice(0, 20), score);
   const liveEventSignals = extractLiveEventSignals(items);
+  const pokemonOfDay = await fetchPokemonOfDay();
 
   // Single timestamp used as visible "last refreshed" marker in header.
   const updatedAt = new Date().toLocaleString("en-US", {
@@ -1056,17 +1115,59 @@ export default async function Home() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <ScrollReveal>
           <header className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur hover-lift">
-          <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
-            Pokemon Fear & Greed Remix
-          </p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">
-            Pokemon Hype Meter
-          </h1>
-          <p className="mt-3 max-w-3xl text-sm text-slate-300 md:text-base">
-            A real-time snapshot of Pokemon buzz, built from live headlines and
-            trend signals.
-          </p>
-          <p className="mt-2 text-xs text-slate-400">Updated: {updatedAt}</p>
+            <div className="grid items-start gap-4 lg:grid-cols-[1fr_auto]">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
+                  Pokemon Fear & Greed Remix
+                </p>
+                <h1 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">
+                  Pokemon Hype Meter
+                </h1>
+                <p className="mt-3 max-w-3xl text-sm text-slate-300 md:text-base">
+                  A real-time snapshot of Pokemon buzz, built from live headlines and
+                  trend signals.
+                </p>
+                <p className="mt-2 text-xs text-slate-400">Updated: {updatedAt}</p>
+              </div>
+              {pokemonOfDay ? (
+                <div className="rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 lg:min-w-64">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-300">
+                    Pokemon Of The Day
+                  </p>
+                  <div className="mt-2 flex items-center gap-3">
+                    {pokemonOfDay.image ? (
+                      <Image
+                        src={pokemonOfDay.image}
+                        alt={pokemonOfDay.name}
+                        width={64}
+                        height={64}
+                        className="h-16 w-16 rounded-lg bg-slate-900 object-contain p-1"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-slate-900 text-xs text-slate-400">
+                        N/A
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-bold text-white">
+                        #{pokemonOfDay.id} {pokemonOfDay.name}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {pokemonOfDay.types.map((type) => (
+                          <span
+                            key={type}
+                            className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] text-fuchsia-200"
+                          >
+                            {type}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </header>
         </ScrollReveal>
 
