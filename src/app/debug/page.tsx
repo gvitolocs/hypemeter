@@ -1,13 +1,14 @@
-import { runWithTimingCollector } from "@/lib/serverTiming";
 import { loadHomePageDataUncached } from "@/app/page";
+import { runWithTimingCollector } from "@/lib/serverTiming";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { headers } from "next/headers";
+import type { ReactNode } from "react";
 
-/** Must read `ENABLE_DEBUG_TIMING_PAGE` at request time on Vercel (not at build). */
+/** Must read env at request time on Vercel (not at build). */
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "SSR timing (debug)",
+  title: "Debug · Monmeter",
   robots: { index: false, follow: false },
 };
 
@@ -16,30 +17,53 @@ function isDebugTimingEnabled(): boolean {
   return process.env.ENABLE_DEBUG_TIMING_PAGE === "1";
 }
 
-export default async function DebugTimingPage() {
-  if (!isDebugTimingEnabled()) {
-    notFound();
+async function requestOrigin(): Promise<string> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+async function fetchDebugJson(path: string): Promise<{ status: number; text: string }> {
+  try {
+    const origin = await requestOrigin();
+    const res = await fetch(`${origin}${path}`, {
+      cache: "no-store",
+      next: { revalidate: 0 },
+    });
+    const text = await res.text();
+    return { status: res.status, text };
+  } catch (e) {
+    return { status: 0, text: e instanceof Error ? e.message : String(e) };
   }
+}
 
-  const { spans, totalMs } = await runWithTimingCollector(() => loadHomePageDataUncached());
-  const maxMs = Math.max(1, ...spans.map((s) => s.ms));
+function prettyJson(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
 
-  return (
-    <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100 md:px-8">
-      <div className="mx-auto max-w-3xl">
-        <h1 className="text-xl font-bold text-cyan-300">SSR timing (same pipeline as home)</h1>
-        <p className="mt-2 text-sm text-slate-400">
-          Wall time for this request: <span className="font-mono text-slate-200">{totalMs}ms</span>. Rows come
-          from <code className="rounded bg-slate-800 px-1">timedAsync</code> /{" "}
-          <code className="rounded bg-slate-800 px-1">logTimingTotal</code> (nested libs included).
+export default async function DebugPage() {
+  const [cardHighlight, cardTrader] = await Promise.all([
+    fetchDebugJson("/api/debug/card-highlight-image"),
+    fetchDebugJson("/api/debug/card-trader"),
+  ]);
+
+  let timingBlock: ReactNode = null;
+  if (isDebugTimingEnabled()) {
+    const { spans, totalMs } = await runWithTimingCollector(() => loadHomePageDataUncached());
+    const maxMs = Math.max(1, ...spans.map((s) => s.ms));
+    timingBlock = (
+      <>
+        <h2 className="mt-10 text-lg font-semibold text-cyan-300">SSR timing (full home pipeline)</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          This request total: <span className="font-mono text-slate-200">{totalMs}ms</span>. Same as{" "}
+          <code className="rounded bg-slate-800 px-1">loadHomePageDataUncached</code>.
         </p>
-        <p className="mt-2 text-xs text-slate-500">
-          Disabled in production unless you set{" "}
-          <code className="rounded bg-slate-800 px-1">ENABLE_DEBUG_TIMING_PAGE=1</code> on Vercel. Dev always
-          works.
-        </p>
-
-        <div className="mt-6 overflow-x-auto rounded-xl border border-white/10">
+        <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
           <table className="w-full border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-white/10 bg-slate-900/80 text-xs uppercase tracking-wide text-slate-500">
@@ -66,11 +90,53 @@ export default async function DebugTimingPage() {
             </tbody>
           </table>
         </div>
-
-        <p className="mt-6 text-xs text-slate-500">
-          Opening this page runs one full <code className="rounded bg-slate-800 px-1">loadHomePageDataUncached()</code>{" "}
-          (same as <code className="rounded bg-slate-800 px-1">/</code>). Use sparingly on production.
+        <p className="mt-3 text-xs text-slate-500">
+          Heavy on production — use sparingly. Disable by removing{" "}
+          <code className="rounded bg-slate-800 px-1">ENABLE_DEBUG_TIMING_PAGE</code>.
         </p>
+      </>
+    );
+  } else {
+    timingBlock = (
+      <section className="mt-10 rounded-xl border border-white/10 bg-slate-900/40 p-4">
+        <h2 className="text-lg font-semibold text-slate-400">SSR timing</h2>
+        <p className="mt-2 text-sm text-slate-500">
+          Set <code className="rounded bg-slate-800 px-1">ENABLE_DEBUG_TIMING_PAGE=1</code> on Vercel to show
+          the full timing table here (runs one home pipeline per page load). In dev it is always enabled.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100 md:px-8">
+      <div className="mx-auto max-w-4xl">
+        <h1 className="text-2xl font-bold text-cyan-300">Debug · Monmeter</h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Internal diagnostics. JSON below comes from the same API routes as{" "}
+          <code className="rounded bg-slate-800 px-1">npm run debug:card</code>. On production, enable{" "}
+          <code className="rounded bg-slate-800 px-1">ENABLE_DEBUG_CARDTRADER=1</code> for full payloads.
+        </p>
+
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold text-amber-200/95">
+            Card highlight image <span className="text-xs font-normal text-slate-500">(HTTP {cardHighlight.status})</span>
+          </h2>
+          <pre className="mt-2 max-h-[min(70vh,32rem)] overflow-auto rounded-xl border border-white/10 bg-slate-900/90 p-3 text-xs leading-relaxed text-slate-200">
+            {prettyJson(cardHighlight.text)}
+          </pre>
+        </section>
+
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold text-amber-200/95">
+            CardTrader + Jina <span className="text-xs font-normal text-slate-500">(HTTP {cardTrader.status})</span>
+          </h2>
+          <pre className="mt-2 max-h-[min(70vh,32rem)] overflow-auto rounded-xl border border-white/10 bg-slate-900/90 p-3 text-xs leading-relaxed text-slate-200">
+            {prettyJson(cardTrader.text)}
+          </pre>
+        </section>
+
+        {timingBlock}
       </div>
     </main>
   );
