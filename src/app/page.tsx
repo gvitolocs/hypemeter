@@ -1607,9 +1607,16 @@ async function fetchPokemonByIdentifier(identifier: string | number): Promise<Po
   }
 }
 
+/** Reddit is excluded from the Pokémon highlight / spotlight article (non-Reddit sources only). */
+function isRedditSource(item: NewsItem): boolean {
+  if (normalize(item.source).includes("reddit")) return true;
+  return /reddit\.com/i.test(item.link);
+}
+
 function pickArticleOfDay(items: NewsItem[], pokemonCatalog: string[]): PokemonOfDayArticle | null {
-  if (items.length === 0) return null;
-  const ranked = items
+  const candidates = items.filter((item) => !isRedditSource(item));
+  if (candidates.length === 0) return null;
+  const ranked = candidates
     .map((item) => {
       const mentions = extractPokemonMentionsFromText(
         [
@@ -1736,6 +1743,7 @@ function pickSpotlightArticleForPokemon(
   catalog: string[],
 ): PokemonOfDayArticle | null {
   const ranked = items
+    .filter((item) => !isRedditSource(item))
     .map((item) => ({
       item,
       rel: scoreArticleRelevance(item),
