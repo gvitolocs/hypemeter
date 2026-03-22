@@ -48,6 +48,11 @@ type CalendarDayStats = {
     pressureHits: number;
     sentiment: number;
     dayScore: number;
+    eventSignals?: Array<{
+      label: string;
+      group: string;
+      weight: number;
+    }>;
   };
   headlines: Array<{
     title: string;
@@ -55,6 +60,12 @@ type CalendarDayStats = {
     source: string;
     pubDate: string;
   }>;
+};
+
+type TimelineEventSignal = {
+  year: number;
+  label: string;
+  intensity: number;
 };
 
 // Revalidate the server-rendered homepage every 30 minutes.
@@ -99,6 +110,28 @@ const blockedTitleHints = [
   "near mint",
   "envío gratis",
   "buy now",
+];
+
+const LIVE_EVENT_SIGNAL_PATTERNS: Array<{ label: string; group: string; weight: number; regex: RegExp }> = [
+  { label: "Pokemon Direct", group: "event", weight: 4.6, regex: /\bpokemon direct\b/i },
+  { label: "Pokemon Presents", group: "event", weight: 4.3, regex: /\bpok[eé]mon presents\b/i },
+  { label: "Major Reveal", group: "event", weight: 2.8, regex: /\breveal|announc(e|ed|ement)|unveil|trailer\b/i },
+  { label: "Release Window", group: "event", weight: 2.3, regex: /\brelease|launch|debut|premiere\b/i },
+  { label: "Expansion Cycle", group: "event", weight: 2.1, regex: /\bexpansion|set list|new set|pre-?release\b/i },
+  { label: "Pokemon Day / Worlds", group: "event", weight: 2.2, regex: /\bpok[eé]mon day|worlds|championship\b/i },
+  { label: "Demand Spike", group: "pressure", weight: 1.8, regex: /\bsold out|out of stock|pre-?order|queue|allocation\b/i },
+  { label: "Supply Stress", group: "pressure", weight: 1.4, regex: /\breprint|restock|scarcity|shortage\b/i },
+];
+
+const timelineEventSignals: TimelineEventSignal[] = [
+  { year: 2006, label: "Diamond & Pearl Era", intensity: 66 },
+  { year: 2010, label: "HGSS + Competitive Upswing", intensity: 62 },
+  { year: 2013, label: "X/Y 3D Transition", intensity: 70 },
+  { year: 2016, label: "Pokemon GO Global Shock", intensity: 98 },
+  { year: 2019, label: "Sword/Shield Reset", intensity: 64 },
+  { year: 2021, label: "Pandemic TCG Mania", intensity: 93 },
+  { year: 2024, label: "Pocket + New Cycle", intensity: 81 },
+  { year: 2025, label: "Direct/Presents Volatility", intensity: 74 },
 ];
 
 // Keep every synthetic score in a strict 0-100 range.
@@ -161,6 +194,18 @@ function parseNews(xml: string): NewsItem[] {
 
 function normalize(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function extractLiveEventSignals(items: NewsItem[], limit = 8) {
+  const text = items.map((item) => item.title).join(" | ");
+  return LIVE_EVENT_SIGNAL_PATTERNS.filter((signal) => signal.regex.test(text))
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, limit)
+    .map((signal) => ({
+      label: signal.label,
+      group: signal.group,
+      weight: signal.weight,
+    }));
 }
 
 // Filter out low-signal commerce spam and noisy listing-style headlines.
@@ -752,6 +797,8 @@ function buildTodayCalendarStats(items: NewsItem[], liveHypeScore: number): Cale
     Math.round(50 + (positiveHits - negativeHits) * 8 + Math.log10(headlineCount + 1) * 12),
   );
 
+  const eventSignals = extractLiveEventSignals(items, 8);
+
   return {
     date: today,
     stats: {
@@ -762,6 +809,7 @@ function buildTodayCalendarStats(items: NewsItem[], liveHypeScore: number): Cale
       sentiment,
       // Explicitly aligned with the homepage live hype score for today's preloaded card.
       dayScore: liveHypeScore,
+      eventSignals,
     },
     headlines: items.slice(0, 8),
   };
@@ -923,6 +971,7 @@ export default async function Home() {
   const mood = labelForScore(score);
   const history = buildBacktrackSeries(score);
   const todayCalendarStats = buildTodayCalendarStats(items.slice(0, 20), score);
+  const liveEventSignals = extractLiveEventSignals(items);
 
   // Single timestamp used as visible "last refreshed" marker in header.
   const updatedAt = new Date().toLocaleString("en-US", {
@@ -1015,6 +1064,28 @@ export default async function Home() {
                 style={{ width: `${score}%` }}
               />
             </div>
+            <div className="mt-3 rounded-xl border border-white/10 bg-slate-800/80 p-3">
+              <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
+                Live Event Signals
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {liveEventSignals.length > 0 ? (
+                  liveEventSignals.map((signal) => (
+                    <span
+                      key={`${signal.group}-${signal.label}`}
+                      className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] text-fuchsia-200"
+                      title={`Weight ${signal.weight.toFixed(1)} • ${signal.group}`}
+                    >
+                      {signal.label}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-400">
+                    No strong event triggers in latest headlines.
+                  </span>
+                )}
+              </div>
+            </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-white/10 bg-slate-800 p-3 hover-lift">
                 <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
@@ -1094,7 +1165,7 @@ export default async function Home() {
             </p>
           </div>
           <div className="mt-4 grid gap-4 lg:grid-cols-[1.5fr_0.7fr]">
-            <HypeBacktrackingChart history={history} />
+            <HypeBacktrackingChart history={history} events={timelineEventSignals} />
             <aside className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-4 hover-lift">
               <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
                 Market Sidecar

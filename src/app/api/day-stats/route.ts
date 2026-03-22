@@ -8,34 +8,36 @@ type NewsItem = {
 };
 
 const MAX_YEARS = 5;
-const EVENT_TOKENS: Array<{ pattern: RegExp; weight: number }> = [
-  { pattern: /\bpokemon direct\b/i, weight: 4.5 },
-  { pattern: /\bpok[eé]mon presents\b/i, weight: 4.2 },
-  { pattern: /\bdirect\b/i, weight: 2.4 },
-  { pattern: /\bpresents\b/i, weight: 2.1 },
-  { pattern: /\breveal|announc(e|ed|ement)|unveil|trailer\b/i, weight: 1.8 },
-  { pattern: /\brelease|launch|debut|premiere\b/i, weight: 1.6 },
-  { pattern: /\bexpansion|set list|new set|pre-?release\b/i, weight: 1.5 },
-  { pattern: /\bpok[eé]mon day|worlds|championship\b/i, weight: 2.2 },
+type WeightedSignal = { label: string; pattern: RegExp; weight: number };
+
+const EVENT_TOKENS: WeightedSignal[] = [
+  { label: "Pokemon Direct", pattern: /\bpokemon direct\b/i, weight: 4.5 },
+  { label: "Pokemon Presents", pattern: /\bpok[eé]mon presents\b/i, weight: 4.2 },
+  { label: "Direct", pattern: /\bdirect\b/i, weight: 2.4 },
+  { label: "Presents", pattern: /\bpresents\b/i, weight: 2.1 },
+  { label: "Reveal / Announcement", pattern: /\breveal|announc(e|ed|ement)|unveil|trailer\b/i, weight: 1.8 },
+  { label: "Release / Launch", pattern: /\brelease|launch|debut|premiere\b/i, weight: 1.6 },
+  { label: "Expansion / Set", pattern: /\bexpansion|set list|new set|pre-?release\b/i, weight: 1.5 },
+  { label: "Pokemon Day / Worlds", pattern: /\bpok[eé]mon day|worlds|championship\b/i, weight: 2.2 },
 ];
 
-const PRESSURE_TOKENS: Array<{ pattern: RegExp; weight: number }> = [
-  { pattern: /\bsold out|out of stock|sellout\b/i, weight: 2.4 },
-  { pattern: /\bpre-?order|queue|line\b/i, weight: 1.6 },
-  { pattern: /\ballocation|shortage|scarcity\b/i, weight: 1.9 },
-  { pattern: /\breprint|restock|supply\b/i, weight: 1.2 },
+const PRESSURE_TOKENS: WeightedSignal[] = [
+  { label: "Sold Out / OOS", pattern: /\bsold out|out of stock|sellout\b/i, weight: 2.4 },
+  { label: "Preorder / Queue", pattern: /\bpre-?order|queue|line\b/i, weight: 1.6 },
+  { label: "Allocation / Scarcity", pattern: /\ballocation|shortage|scarcity\b/i, weight: 1.9 },
+  { label: "Reprint / Restock", pattern: /\breprint|restock|supply\b/i, weight: 1.2 },
 ];
 
-const POSITIVE_TOKENS: Array<{ pattern: RegExp; weight: number }> = [
-  { pattern: /\bhype|surge|boom|record|strong|rally\b/i, weight: 1.6 },
-  { pattern: /\bwin|popular|success|top|massive\b/i, weight: 1.2 },
-  { pattern: /\blove|excited|best|great\b/i, weight: 1.0 },
+const POSITIVE_TOKENS: WeightedSignal[] = [
+  { label: "Hype / Surge", pattern: /\bhype|surge|boom|record|strong|rally\b/i, weight: 1.6 },
+  { label: "Success / Win", pattern: /\bwin|popular|success|top|massive\b/i, weight: 1.2 },
+  { label: "Positive Buzz", pattern: /\blove|excited|best|great\b/i, weight: 1.0 },
 ];
 
-const NEGATIVE_TOKENS: Array<{ pattern: RegExp; weight: number }> = [
-  { pattern: /\bdelay|postpone|cancel\b/i, weight: 1.8 },
-  { pattern: /\bdrop|crash|slump|weak\b/i, weight: 1.6 },
-  { pattern: /\bbacklash|scam|lawsuit|problem\b/i, weight: 1.4 },
+const NEGATIVE_TOKENS: WeightedSignal[] = [
+  { label: "Delay / Cancel", pattern: /\bdelay|postpone|cancel\b/i, weight: 1.8 },
+  { label: "Drop / Crash", pattern: /\bdrop|crash|slump|weak\b/i, weight: 1.6 },
+  { label: "Backlash / Risk", pattern: /\bbacklash|scam|lawsuit|problem\b/i, weight: 1.4 },
 ];
 
 // Small XML helper to extract a single tag value from an <item> block.
@@ -81,8 +83,23 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function weightedTokenHits(text: string, tokens: Array<{ pattern: RegExp; weight: number }>) {
+function weightedTokenHits(text: string, tokens: WeightedSignal[]) {
   return tokens.reduce((sum, token) => sum + (token.pattern.test(text) ? token.weight : 0), 0);
+}
+
+function collectSignals(
+  text: string,
+  groups: Array<{ group: string; tokens: WeightedSignal[] }>,
+  limit = 8,
+) {
+  return groups
+    .flatMap((entry) =>
+      entry.tokens
+        .filter((token) => token.pattern.test(text))
+        .map((token) => ({ label: token.label, group: entry.group, weight: token.weight })),
+    )
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, limit);
 }
 
 // Ensure Google query date syntax uses UTC yyyy-mm-dd.
@@ -136,6 +153,12 @@ function computeStats(items: NewsItem[]) {
     0,
     100,
   );
+  const eventSignals = collectSignals(text, [
+    { group: "event", tokens: EVENT_TOKENS },
+    { group: "pressure", tokens: PRESSURE_TOKENS },
+    { group: "sentiment+", tokens: POSITIVE_TOKENS },
+    { group: "sentiment-", tokens: NEGATIVE_TOKENS },
+  ]);
 
   // Same 6-component weighting philosophy used by the main hype meter.
   const dayScore = clamp(
@@ -159,6 +182,7 @@ function computeStats(items: NewsItem[]) {
     pressureHits: Math.round(pressureHits),
     sentiment,
     dayScore,
+    eventSignals,
   };
 }
 

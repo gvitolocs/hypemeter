@@ -11,6 +11,11 @@ type DayStatsResponse = {
     pressureHits: number;
     sentiment: number;
     dayScore: number;
+    eventSignals?: Array<{
+      label: string;
+      group: string;
+      weight: number;
+    }>;
   };
   headlines: Array<{
     title: string;
@@ -206,6 +211,25 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
                   <p className="text-base font-bold text-white">{data.stats.pressureHits}</p>
                 </div>
               </div>
+
+              {data.stats.eventSignals && data.stats.eventSignals.length > 0 ? (
+                <div className="mt-3 rounded-lg border border-white/10 bg-slate-900 p-2">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                    Event Signals
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {data.stats.eventSignals.map((signal) => (
+                      <span
+                        key={`${signal.group}-${signal.label}`}
+                        className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] text-cyan-200"
+                        title={`Weight ${signal.weight.toFixed(1)} • ${signal.group}`}
+                      >
+                        {signal.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="mt-4 max-h-48 space-y-2 overflow-y-auto pr-1">
                 {data.headlines.map((headline) => (

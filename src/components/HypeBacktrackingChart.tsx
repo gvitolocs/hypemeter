@@ -7,8 +7,15 @@ type YearScore = {
   score: number;
 };
 
+type YearEventSignal = {
+  year: number;
+  label: string;
+  intensity: number;
+};
+
 type Props = {
   history: YearScore[];
+  events?: YearEventSignal[];
 };
 
 function zoneForScore(score: number) {
@@ -20,7 +27,7 @@ function zoneForScore(score: number) {
   return "dead";
 }
 
-export default function HypeBacktrackingChart({ history }: Props) {
+export default function HypeBacktrackingChart({ history, events = [] }: Props) {
   // SVG dimensions and drawing paddings for stable scaling across breakpoints.
   const chartWidth = 940;
   const chartHeight = 250;
@@ -49,6 +56,7 @@ export default function HypeBacktrackingChart({ history }: Props) {
       : 0;
   const max = points.length > 0 ? Math.max(...points.map((point) => point.score)) : 0;
   const min = points.length > 0 ? Math.min(...points.map((point) => point.score)) : 0;
+  const activeEvents = active ? events.filter((event) => event.year === active.year) : [];
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-3">
@@ -98,6 +106,33 @@ export default function HypeBacktrackingChart({ history }: Props) {
           strokeWidth="4"
           points={polyline}
         />
+        {events
+          .map((event) => {
+            const idx = points.findIndex((point) => point.year === event.year);
+            return idx === -1 ? null : { ...event, point: points[idx] };
+          })
+          .filter((entry): entry is YearEventSignal & { point: (typeof points)[number] } => Boolean(entry))
+          .map((entry) => (
+            <g key={`${entry.year}-${entry.label}`}>
+              <line
+                x1={entry.point.x}
+                y1={entry.point.y - 3}
+                x2={entry.point.x}
+                y2={24}
+                stroke="rgba(244, 114, 182, 0.38)"
+                strokeDasharray="2 4"
+              />
+              <circle
+                cx={entry.point.x}
+                cy={24}
+                r={2.8 + entry.intensity / 42}
+                fill="rgba(244, 114, 182, 0.9)"
+                className="cursor-pointer"
+                onMouseEnter={() => setActiveIndex(points.findIndex((point) => point.year === entry.year))}
+                onClick={() => setActiveIndex(points.findIndex((point) => point.year === entry.year))}
+              />
+            </g>
+          ))}
         <rect
           x={padX}
           y={padY}
@@ -174,6 +209,18 @@ export default function HypeBacktrackingChart({ history }: Props) {
       <p className="mt-2 text-[11px] text-slate-500">
         Hover across the chart to inspect each year.
       </p>
+      {activeEvents.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {activeEvents.map((event) => (
+            <span
+              key={`${event.year}-${event.label}`}
+              className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] text-fuchsia-200"
+            >
+              {event.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
