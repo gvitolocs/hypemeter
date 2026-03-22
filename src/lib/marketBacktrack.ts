@@ -73,6 +73,19 @@ async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<Year
   }
 }
 
+/** Nintendo ADR: merge several Stooq symbols so we get variance (single feed is often sparse → flat line). */
+async function fetchStooqNintendoYearlyMerged(): Promise<YearlyCloseMap> {
+  const symbols = ["ntdoy.us", "ntdoy", "ntdoy.de"] as const;
+  const maps = await Promise.all(symbols.map((s) => fetchStooqYearlyClosesBySymbol(s)));
+  const merged = new Map<number, number>();
+  for (const m of maps) {
+    for (const [y, c] of m) {
+      if (!merged.has(y)) merged.set(y, c);
+    }
+  }
+  return merged;
+}
+
 async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
   const map: YearlyCloseMap = new Map();
   try {
@@ -160,7 +173,7 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     fetchYahooYearlyCloses("NTDOY"),
     fetchStooqYearlyClosesBySymbol("^spx"),
     fetchStooqYearlyClosesBySymbol("btcusd"),
-    fetchStooqYearlyClosesBySymbol("ntdoy.us"),
+    fetchStooqNintendoYearlyMerged(),
   ]);
   const spMap = mergeYearlyMaps(spY, spS);
   const btcMap = mergeYearlyMaps(btcY, btcS);

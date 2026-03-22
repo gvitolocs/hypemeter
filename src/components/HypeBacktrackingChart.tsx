@@ -58,6 +58,19 @@ const MARKET_COLORS = {
   nintendo: "rgba(251, 113, 133, 0.85)",
 } as const;
 
+/** Solid fills for tooltip text (match thin lines). */
+const MARKET_TOOLTIP_FILLS: Record<MarketHighlightKey, string> = {
+  sp500: "#34d399",
+  btc: "#fbbf24",
+  nintendo: "#fb7185",
+};
+
+const MARKET_SHORT_LABEL: Record<MarketHighlightKey, string> = {
+  sp500: "S&P",
+  btc: "BTC",
+  nintendo: "NT",
+};
+
 export default function HypeBacktrackingChart({
   history,
   events = [],
@@ -117,6 +130,22 @@ export default function HypeBacktrackingChart({
   const min = points.length > 0 ? Math.min(...points.map((point) => point.score)) : 0;
   const activeEvents = active ? events.filter((event) => event.year === active.year) : [];
   const activeIsHypePeak = active ? hypePeakIndices.has(activeIndex) : false;
+
+  const marketAtIndex = useMemo(() => {
+    if (!marketOverlay || activeIndex < 0) return null;
+    const sp = marketOverlay.sp500[activeIndex];
+    const btc = marketOverlay.btc[activeIndex];
+    const nt = marketOverlay.nintendo[activeIndex];
+    if (sp === undefined || btc === undefined || nt === undefined) return null;
+    if ([sp, btc, nt].some((v) => Number.isNaN(v))) return null;
+    return { sp, btc, nt };
+  }, [marketOverlay, activeIndex]);
+
+  const marketTooltipOrder = useMemo((): MarketHighlightKey[] => {
+    const all: MarketHighlightKey[] = ["sp500", "btc", "nintendo"];
+    if (!highlightSeries) return all;
+    return [highlightSeries, ...all.filter((k) => k !== highlightSeries)];
+  }, [highlightSeries]);
 
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 px-3 pt-3 pb-2">
@@ -246,21 +275,54 @@ export default function HypeBacktrackingChart({
               stroke="rgba(248, 250, 252, 0.35)"
               strokeDasharray="3 5"
             />
-            <g transform={`translate(${Math.min(active.x + 12, chartWidth - 175)}, ${Math.max(active.y - 52, 16)})`}>
+            <g
+              transform={`translate(${Math.min(active.x + 12, chartWidth - (marketAtIndex ? 218 : 175))}, ${Math.max(active.y - (marketAtIndex ? 76 : 52), 8)})`}
+            >
               <rect
                 x="0"
                 y="0"
-                width="165"
-                height="44"
+                width={marketAtIndex ? 206 : 165}
+                height={marketAtIndex ? 68 : 44}
                 rx="8"
                 fill="rgba(15, 23, 42, 0.95)"
                 stroke="rgba(148, 163, 184, 0.4)"
               />
               <text x="10" y="17" fill="#e2e8f0" fontSize="11" fontWeight="700">
-                {active.year} • Score {active.score}
+                {active.year} • Hype {active.score}
               </text>
-              <text x="10" y="32" fill="#94a3b8" fontSize="10">
-                {activeIsHypePeak ? "Local peak · " : ""}Zone: {zoneForScore(active.score)}
+              {marketAtIndex ? (
+                <text x="10" y="34" fontSize="10">
+                  {marketTooltipOrder.map((key, i) => {
+                    const v =
+                      key === "sp500"
+                        ? marketAtIndex.sp
+                        : key === "btc"
+                          ? marketAtIndex.btc
+                          : marketAtIndex.nt;
+                    return (
+                      <tspan key={key}>
+                        {i > 0 ? (
+                          <tspan fill="#64748b" fontWeight="400">
+                            {" · "}
+                          </tspan>
+                        ) : null}
+                        <tspan
+                          fill={MARKET_TOOLTIP_FILLS[key]}
+                          fontWeight={highlightSeries === key ? 700 : 600}
+                        >
+                          {MARKET_SHORT_LABEL[key]} {Math.round(v)}
+                        </tspan>
+                      </tspan>
+                    );
+                  })}
+                  <tspan fill="#64748b" fontSize="9" fontWeight="400">
+                    {" "}
+                    (norm)
+                  </tspan>
+                </text>
+              ) : null}
+              <text x="10" y={marketAtIndex ? 52 : 32} fill="#94a3b8" fontSize="10">
+                {activeIsHypePeak ? "Peak · " : ""}Zone: {zoneForScore(active.score)}
               </text>
             </g>
           </>
