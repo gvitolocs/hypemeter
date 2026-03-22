@@ -86,6 +86,14 @@ type PokemonOfDayArticle = {
   pokemonMentions: string[];
 };
 
+/** First listing in CardTrader Pokémon “Best Sellers” (TCG singles). */
+type CardTraderBestSeller = {
+  name: string;
+  imageUrl: string;
+  cardUrl: string;
+  fromPrice: string;
+};
+
 // Revalidate the server-rendered homepage every 30 minutes.
 export const revalidate = 1800;
 
@@ -104,6 +112,13 @@ const GOOGLE_TRENDS_DAILY_RSS = "https://trends.google.com/trending/rss?geo=US";
 const POKEMON_NEWS_URL = "https://www.pokemon.com/us/pokemon-news";
 const REDDIT_TCG_URL = "https://www.reddit.com/r/PokemonTCG/hot.json?limit=30";
 const REDDIT_CARDS_URL = "https://www.reddit.com/r/pokemoncards/hot.json?limit=30";
+
+/**
+ * Global /en/highlights is Magic-first; Pokémon TCG best sellers live on the game hub.
+ * Same marketplace as https://www.cardtrader.com/en/highlights (linked from that page).
+ */
+const CARDTRADER_POKEMON_HUB = "https://www.cardtrader.com/en/pokemon";
+const CARDTRADER_HIGHLIGHTS_URL = "https://www.cardtrader.com/en/highlights";
 
 /** Inline CSS gradients — Tailwind cannot see dynamic `from-*` / `to-*` class strings on `platform.accent`. */
 const SOCIAL_PULSE_BAR_GRADIENT_POSITIVE: Record<string, string> = {
@@ -539,6 +554,37 @@ async function fetchWithTimeout(
     return null;
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+async function fetchCardTraderPokemonBestSeller(): Promise<CardTraderBestSeller | null> {
+  try {
+    const jinaUrl = `https://r.jina.ai/${CARDTRADER_POKEMON_HUB}`;
+    const res = await fetchWithTimeout(jinaUrl, {
+      next: { revalidate: 3600 },
+      headers: { "user-agent": "Mozilla/5.0 hypemeter" },
+      timeoutMs: 18000,
+    });
+    if (!res?.ok) return null;
+    const text = await res.text();
+    const section = text.split("## Best Sellers")[1]?.split("\n## ")[0] ?? "";
+    const m = section.match(
+      /\[!\[[^\]]*\]\((https:\/\/[^)]+)\)\s*([\s\S]+?)\]\((https:\/\/www\.cardtrader\.com\/en\/cards\/[^)]+)\)/,
+    );
+    if (!m) return null;
+    const imageUrl = m[1];
+    const rawLabel = m[2].trim();
+    const cardUrl = m[3];
+    const nameFromLabel = rawLabel.split(/\s+Starting from:/i)[0]?.trim() ?? rawLabel;
+    const priceMatch = rawLabel.match(/Starting from:\s*\$([\d.]+)/i);
+    return {
+      name: nameFromLabel,
+      imageUrl,
+      cardUrl,
+      fromPrice: priceMatch?.[1] ?? "",
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -2076,6 +2122,7 @@ export default async function Home() {
     signalQuality: liveSignalQuality,
     components: indicators,
   });
+  const cardTraderBestSeller = await fetchCardTraderPokemonBestSeller();
 
   // Single timestamp used as visible "last refreshed" marker in header.
   const updatedAt = new Date().toLocaleString("en-US", {
@@ -2116,7 +2163,7 @@ export default async function Home() {
       <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 xl:max-w-7xl 2xl:max-w-[min(92rem,100%)]">
         <ScrollReveal>
           <header className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur hover-lift">
-            <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
                   Pokemon Fear & Greed Remix
@@ -2130,6 +2177,50 @@ export default async function Home() {
                 </p>
                 <p className="mt-2 text-xs text-slate-400">Updated: {updatedAt}</p>
               </div>
+              {cardTraderBestSeller ? (
+                <div className="w-full max-w-[15rem] shrink-0 rounded-2xl border border-amber-400/30 bg-slate-950/80 p-3 lg:max-w-[13.5rem]">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-amber-300">
+                    Card of the Day
+                  </p>
+                  <a
+                    href={cardTraderBestSeller.cardUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 flex items-start gap-2.5 rounded-xl transition-colors hover:bg-slate-900/60"
+                    title="Open this listing on CardTrader"
+                  >
+                    <Image
+                      src={cardTraderBestSeller.imageUrl}
+                      alt=""
+                      width={70}
+                      height={98}
+                      className="h-[4.75rem] w-auto shrink-0 rounded-md bg-slate-900 object-contain object-top shadow-inner"
+                      unoptimized
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold leading-snug text-white line-clamp-4">
+                        {cardTraderBestSeller.name}
+                      </p>
+                      {cardTraderBestSeller.fromPrice ? (
+                        <p className="mt-1 text-[11px] font-medium text-amber-200/95">
+                          from ${cardTraderBestSeller.fromPrice}
+                        </p>
+                      ) : null}
+                    </div>
+                  </a>
+                  <p className="mt-2 text-[9px] leading-snug text-slate-500">
+                    Pokémon TCG #1 best seller on CardTrader ·{" "}
+                    <a
+                      href={CARDTRADER_HIGHLIGHTS_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-cyan-400/90 underline-offset-2 hover:text-cyan-300 hover:underline"
+                    >
+                      Highlights
+                    </a>
+                  </p>
+                </div>
+              ) : null}
               {pokemonOfDay ? (
                 <a
                   href={pokemonOfDayArticle?.link ?? "#"}
