@@ -160,6 +160,29 @@ const CONTEXTUAL_SIGNAL_PATTERNS: Array<{
   { label: "Community Buzz Spike", group: "community", baseWeight: 1.5, regex: /\bhype|massive|viral|trending\b/i },
 ];
 
+type WeightedHeadlineSignal = {
+  label: string;
+  weight: number;
+  regex: RegExp;
+};
+
+// These signal families power the right-side market pressure cards.
+const AVAILABILITY_SIGNAL_PATTERNS: WeightedHeadlineSignal[] = [
+  { label: "Sold Out", weight: 1.9, regex: /\bsold out|out of stock\b/i },
+  { label: "Preorder Wave", weight: 1.5, regex: /\bpre-?order|preorder\b/i },
+  { label: "Queue / Allocation", weight: 1.4, regex: /\bqueue|allocation|waiting list\b/i },
+  { label: "Scarcity", weight: 1.2, regex: /\bscarcity|shortage|hard to find\b/i },
+  { label: "Retail Constraint", weight: 1.3, regex: /\bpurchase limit|per customer|limited quantities\b/i },
+];
+
+const PRODUCT_STRESS_SIGNAL_PATTERNS: WeightedHeadlineSignal[] = [
+  { label: "Reprint / Restock", weight: 1.2, regex: /\breprint|restock\b/i },
+  { label: "Shipping Delay", weight: 1.6, regex: /\bshipping delay|delayed|delay\b/i },
+  { label: "Platform Instability", weight: 1.5, regex: /\bserver issue|maintenance|crash|outage\b/i },
+  { label: "Restriction Language", weight: 1.3, regex: /\blimit|restriction|quota\b/i },
+  { label: "Fulfillment Pressure", weight: 1.1, regex: /\bbackorder|fulfillment|dispatch\b/i },
+];
+
 const timelineEventSignals: TimelineEventSignal[] = [
   { year: 2006, label: "Diamond & Pearl Era", intensity: 66 },
   { year: 2010, label: "HGSS + Competitive Upswing", intensity: 62 },
@@ -234,8 +257,28 @@ function normalize(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Count weighted headline signals with a per-item cap to avoid spam-like inflation.
+function weightedSignalHitsAcrossItems(items: NewsItem[], signals: WeightedHeadlineSignal[]) {
+  let total = 0;
+  for (const item of items) {
+    const text = normalize(`${item.title} ${item.summary}`);
+    let perItem = 0;
+    for (const signal of signals) {
+      if (signal.regex.test(text)) {
+        perItem += signal.weight;
+      }
+    }
+    total += Math.min(perItem, 3.8);
+  }
+  return total;
 }
 
 function extractLiveEventSignals(items: NewsItem[], limit = 12) {
@@ -565,28 +608,47 @@ function summarizeHype(
     communitySentiment: number;
   },
 ) {
-  // Recency and scarcity keywords drive market pressure-style components.
+  // Recency and scarcity signals drive market pressure-style components.
   const hasNews = items.length > 0;
   const recent24 = items.filter((item) => hoursAgo(item.pubDate) <= 24).length;
-  const titleBlob = items.map((item) => normalize(item.title)).join(" | ");
-  const selloutHits = [
-    "sold out",
-    "out of stock",
-    "preorder",
-    "allocation",
-    "scarcity",
-    "queue",
-    "purchase limit",
-  ].reduce((count, key) => count + (titleBlob.includes(key) ? 1 : 0), 0);
-  const stressHits = ["reprint", "delayed", "shipping delay", "limit", "queue"].reduce(
-    (count, key) => count + (titleBlob.includes(key) ? 1 : 0),
-    0,
-  );
+  const uniqueSources = new Set(items.map((item) => normalize(item.source || "Unknown"))).size;
+  const availabilityHits = weightedSignalHitsAcrossItems(items, AVAILABILITY_SIGNAL_PATTERNS);
+  const productStressHits = weightedSignalHitsAcrossItems(items, PRODUCT_STRESS_SIGNAL_PATTERNS);
+  const coverage = clamp01(Math.log10(items.length + 1) / Math.log10(26));
+  const sourceSpread = clamp01((uniqueSources - 1) / 7);
+  const recencyCoverage = hasNews ? clamp01(recent24 / Math.max(3, items.length * 0.8)) : 0;
+  const confidence = hasNews ? clamp01(0.34 + coverage * 0.36 + sourceSpread * 0.3) : 0;
+  const activityBoost = Math.min(11, Math.log10(recent24 + 1) * 9);
+
+  // "Density over headlines" keeps values comparable regardless of news volume.
+  const availabilityDensity = hasNews ? availabilityHits / Math.max(3, items.length * 1.25) : 0;
+  const productStressDensity = hasNews ? productStressHits / Math.max(3, items.length * 1.2) : 0;
+
+  // Method inspired by composite-index practice: normalize to a neutral anchor and then
+  // scale by confidence (coverage + source diversity), avoiding very low locked values.
+  const availabilityRaw =
+    50 +
+    Math.tanh((availabilityDensity - 0.46) * 3.4) * 30 +
+    recencyCoverage * 9 +
+    activityBoost * 0.45;
+  const availabilityPressureScore = hasNews
+    ? clampScore(50 + (availabilityRaw - 50) * confidence)
+    : 34;
+
+  const productStressRaw =
+    48 +
+    Math.tanh((productStressDensity - 0.4) * 3.6) * 31 +
+    Math.tanh((availabilityDensity - 0.52) * 2.2) * 8 +
+    recencyCoverage * 8 +
+    activityBoost * 0.4;
+  const productStressScore = hasNews
+    ? clampScore(50 + (productStressRaw - 50) * confidence)
+    : 32;
+
   const activityFloor = clampScore(8 + (recent24 / 30) * 20);
   const searchInterestScore = hasNews
     ? Math.max(external.searchInterest, Math.min(activityFloor, 34))
     : external.searchInterest;
-  const productStressScore = clampScore((stressHits / 5) * 100 + (recent24 / 40) * 12);
 
   const components: SignalComponent[] = [
     {
@@ -609,8 +671,8 @@ function summarizeHype(
       id: "availability_pressure",
       label: "Availability Pressure",
       weight: 0.2,
-      score: clampScore((selloutHits / 5) * 100 + (recent24 / 40) * 25),
-      description: "Sellout and preorder tightness signal.",
+      score: availabilityPressureScore,
+      description: "Confidence-adjusted sellout/preorder scarcity density.",
       group: "market",
     },
     {
@@ -633,8 +695,8 @@ function summarizeHype(
       id: "product_stress",
       label: "Product Stress / Queue",
       weight: 0.1,
-      score: hasNews ? Math.max(6, productStressScore) : productStressScore,
-      description: "Queue/reprint/restriction pressure in live coverage.",
+      score: productStressScore,
+      description: "Operational stress density (queues, delays, restrictions).",
       group: "market",
     },
   ];
