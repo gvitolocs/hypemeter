@@ -105,6 +105,18 @@ const POKEMON_NEWS_URL = "https://www.pokemon.com/us/pokemon-news";
 const REDDIT_TCG_URL = "https://www.reddit.com/r/PokemonTCG/hot.json?limit=30";
 const REDDIT_CARDS_URL = "https://www.reddit.com/r/pokemoncards/hot.json?limit=30";
 
+/** Inline CSS gradients — Tailwind cannot see dynamic `from-*` / `to-*` class strings on `platform.accent`. */
+const SOCIAL_PULSE_BAR_GRADIENT_POSITIVE: Record<string, string> = {
+  "google-search": "linear-gradient(90deg, #22d3ee 0%, #38bdf8 35%, #3b82f6 72%, #6366f1 100%)",
+  reddit: "linear-gradient(90deg, #fb923c 0%, #f59e0b 45%, #fbbf24 100%)",
+  youtube: "linear-gradient(90deg, #f87171 0%, #ef4444 40%, #f43f5e 85%, #fb7185 100%)",
+  facebook: "linear-gradient(90deg, #a5b4fc 0%, #6366f1 40%, #3b82f6 100%)",
+  threads: "linear-gradient(90deg, #c4b5fd 0%, #a78bfa 35%, #d946ef 70%, #f472b6 100%)",
+  "pokemon-official": "linear-gradient(90deg, #f0abfc 0%, #e879f9 30%, #a855f7 65%, #7c3aed 100%)",
+};
+const SOCIAL_PULSE_BAR_GRADIENT_NEGATIVE =
+  "linear-gradient(90deg, #475569 0%, #64748b 35%, #be123c 78%, #fb7185 100%)";
+
 const PRICECHARTING_ASSETS = [
   "https://www.pricecharting.com/game/pokemon-base-set/charizard-4",
   "https://www.pricecharting.com/game/pokemon-base-set/blastoise-2",
@@ -1947,51 +1959,48 @@ export default async function Home() {
   const topArticles = [...items]
     .sort((a, b) => scoreArticleRelevance(b) - scoreArticleRelevance(a))
     .slice(0, 10);
-  /** Map day-over-day % change to a 0–100 bar (flat day ≈ 50%). Volume is shown in the number above. */
-  const socialMomentumBarPct = (deltaPct: number) =>
-    clampScore(50 + Math.max(-95, Math.min(95, deltaPct)) * 0.48);
+  /** Day-over-day momentum → bar width; floor caps extreme drops so the track stays readable. */
+  const socialMomentumBarPct = (deltaPct: number) => {
+    const x = Math.max(-95, Math.min(95, deltaPct));
+    const linear = 50 + x * 0.45;
+    return clampScore(Math.max(22, Math.min(94, linear)));
+  };
   const platformGraphBase = [
     {
       key: "google-search",
       label: "Google Search",
       current: socialTraffic["google-search"].current,
       previous: socialTraffic["google-search"].previous,
-      accent: "from-cyan-400 to-blue-500",
     },
     {
       key: "reddit",
       label: "Reddit",
       current: socialTraffic.reddit.current,
       previous: socialTraffic.reddit.previous,
-      accent: "from-orange-400 to-amber-500",
     },
     {
       key: "youtube",
       label: "YouTube",
       current: socialTraffic.youtube.current,
       previous: socialTraffic.youtube.previous,
-      accent: "from-red-400 to-rose-500",
     },
     {
       key: "facebook",
       label: "Facebook",
       current: socialTraffic.facebook.current,
       previous: socialTraffic.facebook.previous,
-      accent: "from-indigo-400 to-blue-500",
     },
     {
       key: "threads",
       label: "Threads",
       current: socialTraffic.threads.current,
       previous: socialTraffic.threads.previous,
-      accent: "from-violet-400 to-fuchsia-500",
     },
     {
       key: "pokemon-official",
       label: "Pokemon Official",
       current: socialTraffic["pokemon-official"].current,
       previous: socialTraffic["pokemon-official"].previous,
-      accent: "from-fuchsia-400 to-purple-500",
     },
   ];
   const platformGraph = platformGraphBase.map((platform) => {
@@ -2292,7 +2301,8 @@ export default async function Home() {
                 Social Signal Pulse
               </p>
               <p className="mt-1 text-[9px] leading-snug text-slate-500">
-                Bar width = day-over-day momentum (50% ≈ flat). Big number = today&apos;s traffic level.
+                Bar width = day-over-day momentum (50% ≈ flat; strong drops floor ~22% for readability). Big number =
+                today&apos;s traffic level.
               </p>
               <div className="mt-2 grid flex-1 auto-rows-fr gap-2 sm:grid-cols-2">
                 {platformGraph.map((platform, index) => (
@@ -2310,12 +2320,17 @@ export default async function Home() {
                       </p>
                       <p className="text-sm font-bold text-white">{formatInteger(platform.current)}</p>
                     </div>
-                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-700">
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-700/90">
                       <div
-                        className={`h-full rounded-full bg-gradient-to-r ${
-                          platform.deltaPct >= 0 ? platform.accent : "from-slate-600 to-rose-600"
-                        }`}
-                        style={{ width: `${platform.barPct}%` }}
+                        className="h-full rounded-full shadow-sm shadow-black/20"
+                        style={{
+                          width: `${platform.barPct}%`,
+                          background:
+                            platform.deltaPct >= 0
+                              ? (SOCIAL_PULSE_BAR_GRADIENT_POSITIVE[platform.key] ??
+                                SOCIAL_PULSE_BAR_GRADIENT_POSITIVE["google-search"])
+                              : SOCIAL_PULSE_BAR_GRADIENT_NEGATIVE,
+                        }}
                       />
                     </div>
                     <p
