@@ -946,6 +946,22 @@ function sourceQuality(source: string) {
   return 0;
 }
 
+function scoreArticleRelevance(item: NewsItem) {
+  const title = normalize(item.title);
+  let score = 0;
+  score += sourceQuality(item.source) * 4;
+  if (/(pokemon|pokémon)/i.test(item.title)) score += 3;
+  if (/(direct|presents|reveal|announcement|launch|release|expansion|worlds|championship)/i.test(item.title)) {
+    score += 4;
+  }
+  if (/(guide|beginner|best game|opinion|reddit|thread|question)/i.test(item.title)) {
+    score -= 4;
+  }
+  score += Math.max(0, 10 - hoursAgo(item.pubDate) / 4);
+  if (title.includes("pokémon") || title.includes("pokemon")) score += 1;
+  return score;
+}
+
 function normalizePokemonToken(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -1076,19 +1092,7 @@ function pickArticleOfDay(items: NewsItem[]): PokemonOfDayArticle | null {
   if (items.length === 0) return null;
   const ranked = items
     .map((item) => {
-      const title = normalize(item.title);
-      let score = 0;
-      score += sourceQuality(item.source) * 4;
-      if (/(pokemon|pokémon)/i.test(item.title)) score += 3;
-      if (/(direct|presents|reveal|announcement|launch|release|expansion|worlds|championship)/i.test(item.title)) {
-        score += 4;
-      }
-      if (/(guide|beginner|best game|opinion|reddit|thread|question)/i.test(item.title)) {
-        score -= 4;
-      }
-      score += Math.max(0, 10 - hoursAgo(item.pubDate) / 4);
-      if (title.includes("pokémon") || title.includes("pokemon")) score += 1;
-      return { item, score };
+      return { item, score: scoreArticleRelevance(item) };
     })
     .sort((a, b) => b.score - a.score);
 
@@ -1384,6 +1388,65 @@ export default async function Home() {
   const todayCalendarStats = buildTodayCalendarStats(items.slice(0, 20), score);
   const liveEventSignals = extractLiveEventSignals(items);
   const liveSignalQuality = computeLiveSignalQuality(items, liveEventSignals.length);
+  const topArticles = [...items]
+    .sort((a, b) => scoreArticleRelevance(b) - scoreArticleRelevance(a))
+    .slice(0, 10);
+  const sourceCounts = items.reduce(
+    (acc, item) => {
+      const source = normalize(item.source);
+      if (source.includes("reddit")) acc.reddit += 1;
+      if (source.includes("youtube")) acc.youtube += 1;
+      if (source.includes("facebook")) acc.facebook += 1;
+      if (
+        source.includes("pokemon.com") ||
+        source.includes("the pokemon company") ||
+        source.includes("nintendo")
+      ) {
+        acc.official += 1;
+      }
+      return acc;
+    },
+    { reddit: 0, youtube: 0, facebook: 0, official: 0 },
+  );
+  const platformGraph = [
+    {
+      key: "google-search",
+      label: "Google Search",
+      value: searchInterest,
+      detail: `${searchInterest}/100 interest`,
+      accent: "from-cyan-400 to-blue-500",
+    },
+    {
+      key: "reddit",
+      label: "Reddit",
+      value: clampScore((sourceCounts.reddit / Math.max(1, items.length)) * 100 * 1.7),
+      detail: `${sourceCounts.reddit} headlines`,
+      accent: "from-orange-400 to-amber-500",
+    },
+    {
+      key: "youtube",
+      label: "YouTube",
+      value: clampScore((sourceCounts.youtube / Math.max(1, items.length)) * 100 * 2),
+      detail: `${sourceCounts.youtube} headlines`,
+      accent: "from-red-400 to-rose-500",
+    },
+    {
+      key: "facebook",
+      label: "Facebook",
+      value: clampScore((sourceCounts.facebook / Math.max(1, items.length)) * 100 * 1.7),
+      detail: `${sourceCounts.facebook} headlines`,
+      accent: "from-indigo-400 to-blue-500",
+    },
+    {
+      key: "pokemon-official",
+      label: "Pokemon Official",
+      value: clampScore(
+        (sourceCounts.official / Math.max(1, items.length)) * 100 * 1.8 + eventCatalyst * 0.2,
+      ),
+      detail: `${sourceCounts.official} official-source headlines`,
+      accent: "from-fuchsia-400 to-purple-500",
+    },
+  ];
   const pokemonOfDayArticle = pickArticleOfDay(items);
   const pokemonOfDay = await pickPokemonOfDayFromArticle(pokemonOfDayArticle);
 
@@ -1732,6 +1795,37 @@ export default async function Home() {
         </section>
         </ScrollReveal>
 
+        <ScrollReveal delayMs={135}>
+          <section className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
+              Platform Pulse Graph
+            </h3>
+            <p className="mt-2 text-xs text-slate-400">
+              Reddit, YouTube, Google Search, Facebook, and Pokemon official signal intensity.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {platformGraph.map((platform) => (
+                <article
+                  key={platform.key}
+                  className="rounded-2xl border border-white/10 bg-slate-800 p-4 hover-lift"
+                >
+                  <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
+                    {platform.label}
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-white">{platform.value}</p>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-700">
+                    <div
+                      className={`h-full rounded-full bg-gradient-to-r ${platform.accent}`}
+                      style={{ width: `${platform.value}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-400">{platform.detail}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        </ScrollReveal>
+
         <ScrollReveal delayMs={150}>
           <DayStatsCalendar
             initialDate={todayCalendarStats.date}
@@ -1742,7 +1836,7 @@ export default async function Home() {
         <ScrollReveal delayMs={180}>
         <section className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
-            Latest Pokemon News
+            Top 10 Pokemon Articles Today
           </h3>
           {items.length === 0 ? (
             <p className="mt-3 text-sm text-slate-400">
@@ -1750,11 +1844,16 @@ export default async function Home() {
             </p>
           ) : (
             <ul className="mt-4 space-y-3">
-              {items.slice(0, 12).map((item) => (
+              {topArticles.map((item, index) => (
                 <li
                   key={`${item.link}-${item.pubDate}`}
-                  className="rounded-2xl border border-white/10 bg-slate-800 p-4 hover-lift"
+                  className={`rounded-2xl border bg-slate-800 p-4 hover-lift ${
+                    index < 3 ? "border-cyan-400/35" : "border-white/10"
+                  }`}
                 >
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-fuchsia-300">
+                    #{index + 1} Top pick
+                  </p>
                   <a
                     className="text-sm font-semibold text-cyan-300 hover:text-cyan-200"
                     href={item.link}
