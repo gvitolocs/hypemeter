@@ -122,7 +122,7 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
       return;
     }
 
-    let active = true;
+    const active = true;
     setLoading(true);
     setError(null);
     try {

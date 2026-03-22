@@ -2052,8 +2052,6 @@ export default async function Home() {
   const {
     cacheMeta,
     items,
-    socialTraffic,
-    searchInterest,
     market,
     score,
     indicators,

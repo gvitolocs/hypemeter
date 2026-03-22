@@ -29,8 +29,8 @@ function collectScoresForYRange(history: YearScore[], marketOverlay: MarketYearl
 /** Tighter Y-zoom on mobile so trends read clearly (avoid a wide 0–100 feel). */
 function computeMobileYScale(values: number[]): { yMin: number; yMax: number } {
   if (values.length === 0) return { yMin: 0, yMax: 100 };
-  let vmin = Math.min(...values);
-  let vmax = Math.max(...values);
+  const vmin = Math.min(...values);
+  const vmax = Math.max(...values);
   const spread = vmax - vmin;
   // Less padding than before so slopes use more of the plot height.
   const pad = spread < 1e-9 ? 8 : Math.max(spread * 0.05, 1.5);
