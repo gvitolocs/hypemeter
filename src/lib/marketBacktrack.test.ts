@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { alignYearSeries, normalizeTo100, parseStooqDailyHistoryToYearlyLastClose } from "@/lib/marketBacktrack";
+import {
+  alignYearSeries,
+  normalizeTo100,
+  parseStooqDailyHistoryToYearlyLastClose,
+  seriesHasVariance,
+} from "@/lib/marketBacktrack";
 
 describe("marketBacktrack", () => {
   it("alignYearSeries uses placeholder when no Yahoo data (still drawable overlays)", () => {
@@ -25,6 +30,11 @@ describe("marketBacktrack", () => {
 
   it("normalizeTo100 maps min→0 and max→100", () => {
     expect(normalizeTo100([10, 20])).toEqual([0, 100]);
+  });
+
+  it("seriesHasVariance detects flat series", () => {
+    expect(seriesHasVariance([50, 50, 50])).toBe(false);
+    expect(seriesHasVariance([50, 51, 50])).toBe(true);
   });
 
   it("parseStooqDailyHistoryToYearlyLastClose keeps last close per year", () => {

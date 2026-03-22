@@ -13,7 +13,8 @@ export const MARKET_SNAPSHOT_PAGE_FALLBACK: MarketSnapshot = {
   nintendo: 14.7,
   nintendoPreviousClose: 15.2,
   sp500GrowthPct: -1.34,
-  bitcoinGrowthPct: -0.18,
+  /** Slightly positive so the BTC card isn’t the same “red” as S&P when fallback fills all fields. */
+  bitcoinGrowthPct: 0.12,
   nintendoGrowthPct: -3.29,
   updatedAt: null,
 };

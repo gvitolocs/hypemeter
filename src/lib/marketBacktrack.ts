@@ -149,6 +149,14 @@ export type NormalizeTo100Options = {
   degenerateBias?: number;
 };
 
+/** True if aligned series has more than one distinct value (before normalization). */
+export function seriesHasVariance(values: number[]): boolean {
+  if (values.length < 2) return false;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return max - min > 1e-9;
+}
+
 /** Min–max normalize to 0–100. Constant series → mid-chart (~50), not 0 (bottom). */
 export function normalizeTo100(values: number[], options?: NormalizeTo100Options): number[] {
   if (values.length === 0) return [];
@@ -180,7 +188,15 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
   const ntMap = mergeYearlyMaps(ntY, ntS);
   const spAligned = alignYearSeries(years, spMap);
   const btcAligned = alignYearSeries(years, btcMap);
-  const ntAligned = alignYearSeries(years, ntMap);
+  let ntAligned = alignYearSeries(years, ntMap);
+  /**
+   * NTDOY ADR often comes back as one price forward-filled → min=max → norm ~49 forever.
+   * Yahoo Tokyo listing (7974.T) has full history; use it only for *shape* on this chart (still labeled NT).
+   */
+  if (!seriesHasVariance(ntAligned)) {
+    const jpMap = await fetchYahooYearlyCloses("7974.T");
+    ntAligned = alignYearSeries(years, jpMap);
+  }
   return {
     sp500: normalizeTo100(spAligned, { degenerateBias: 0 }),
     btc: normalizeTo100(btcAligned, { degenerateBias: 0.55 }),
