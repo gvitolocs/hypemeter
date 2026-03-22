@@ -455,6 +455,191 @@ type SearchInterestStats = {
   yesterdayTraffic: number;
 };
 
+type SocialTrafficSnapshot = Record<
+  string,
+  {
+    current: number;
+    previous: number;
+  }
+>;
+
+let lastSocialTrafficSnapshot: SocialTrafficSnapshot | null = null;
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit & { timeoutMs?: number } = {},
+) {
+  const { timeoutMs = 8000, ...rest } = options;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...rest, signal: controller.signal });
+    return response;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function parseCompactMetric(raw: string) {
+  const normalized = raw.trim().toUpperCase().replace(/\s+/g, "");
+  const unit = normalized.endsWith("K") ? "K" : normalized.endsWith("M") ? "M" : normalized.endsWith("B") ? "B" : "";
+  const numberPart = unit ? normalized.slice(0, -1) : normalized;
+  if (!numberPart) return 0;
+  if (!unit) {
+    const digits = numberPart.replace(/[^\d]/g, "");
+    return digits ? Number(digits) : 0;
+  }
+  const numeric = Number(numberPart.replace(/,/g, ".").replace(/[^\d.]/g, ""));
+  if (Number.isNaN(numeric)) return 0;
+  const multiplier = unit === "K" ? 1_000 : unit === "M" ? 1_000_000 : 1_000_000_000;
+  return Math.round(numeric * multiplier);
+}
+
+function safeTrafficFromCache(key: string, current: number, previous: number) {
+  const cached = lastSocialTrafficSnapshot?.[key];
+  const safeCurrent = current > 0 ? current : (cached?.current ?? 0);
+  const safePrevious =
+    previous > 0 ? previous : cached?.previous ?? cached?.current ?? safeCurrent;
+  return { current: safeCurrent, previous: safePrevious };
+}
+
+async function fetchRedditTraffic() {
+  const now = Date.now();
+  const startToday = new Date();
+  startToday.setUTCHours(0, 0, 0, 0);
+  const startYesterday = new Date(startToday.getTime() - 24 * 60 * 60 * 1000);
+  let today = 0;
+  let yesterday = 0;
+  const urls = [REDDIT_TCG_URL, REDDIT_CARDS_URL, "https://www.reddit.com/r/pokemon/hot.json?limit=40"];
+  for (const url of urls) {
+    const res = await fetchWithTimeout(url, { next: { revalidate: 600 }, timeoutMs: 7000 });
+    if (!res?.ok) continue;
+    const payload = (await res.json().catch(() => null)) as
+      | {
+          data?: {
+            children?: Array<{
+              data?: { created_utc?: number; score?: number; num_comments?: number };
+            }>;
+          };
+        }
+      | null;
+    for (const child of payload?.data?.children ?? []) {
+      const createdUtcMs = (child.data?.created_utc ?? 0) * 1000;
+      const engagement = Math.max(0, child.data?.score ?? 0) + Math.max(0, child.data?.num_comments ?? 0) * 2;
+      if (createdUtcMs >= startToday.getTime() && createdUtcMs <= now) today += engagement;
+      else if (
+        createdUtcMs >= startYesterday.getTime() &&
+        createdUtcMs < startToday.getTime()
+      ) {
+        yesterday += engagement;
+      }
+    }
+  }
+  return { current: today, previous: yesterday };
+}
+
+async function fetchYouTubeTraffic() {
+  const res = await fetchWithTimeout(
+    "https://www.youtube.com/results?search_query=pokemon&hl=en&gl=US",
+    {
+      headers: { "user-agent": "Mozilla/5.0", "accept-language": "en-US,en;q=0.9" },
+      next: { revalidate: 900 },
+      timeoutMs: 8000,
+    },
+  );
+  if (!res?.ok) return { current: 0, previous: 0 };
+  const html = await res.text();
+  const views = [...html.matchAll(/\"viewCountText\":\{\"simpleText\":\"([^\"]+)\"\}/g)].map((m) =>
+    parseCompactMetric(m[1]),
+  );
+  const times = [...html.matchAll(/\"publishedTimeText\":\{\"simpleText\":\"([^\"]+)\"\}/g)].map((m) =>
+    normalize(m[1]),
+  );
+  let today = 0;
+  let yesterday = 0;
+  const len = Math.min(views.length, times.length, 20);
+  for (let i = 0; i < len; i += 1) {
+    const t = times[i];
+    const v = views[i];
+    if (/minute|hour|today|streamed/.test(t)) today += v;
+    else if (/1 day ago/.test(t)) yesterday += v;
+  }
+  return { current: today, previous: yesterday };
+}
+
+async function fetchFacebookTraffic() {
+  const res = await fetchWithTimeout("https://r.jina.ai/http://www.facebook.com/Pokemon", {
+    headers: { "user-agent": "Mozilla/5.0" },
+    next: { revalidate: 900 },
+    timeoutMs: 9000,
+  });
+  if (!res?.ok) return { facebookCurrent: 0, facebookPrevious: 0, officialCurrent: 0, officialPrevious: 0 };
+  const text = await res.text();
+  const reactionMatch = text.match(/All reactions:\s*([\d.,KMB]+)\s*[\n\r ]+([\d.,KMB]+)\s*[\n\r ]+([\d.,KMB]+)/i);
+  const reactions = reactionMatch ? parseCompactMetric(reactionMatch[1]) : 0;
+  const comments = reactionMatch ? parseCompactMetric(reactionMatch[2]) : 0;
+  const shares = reactionMatch ? parseCompactMetric(reactionMatch[3]) : 0;
+  const followersMatch = text.match(/\*\*([\d.,]+\s*[KMB])\*\*\s+followers/i);
+  const followers = followersMatch ? parseCompactMetric(followersMatch[1]) : 0;
+  return {
+    facebookCurrent: reactions + comments * 2 + shares * 3,
+    facebookPrevious: 0,
+    officialCurrent: followers,
+    officialPrevious: 0,
+  };
+}
+
+async function fetchThreadsTraffic() {
+  const res = await fetchWithTimeout("https://r.jina.ai/http://www.threads.net/@pokemon", {
+    headers: { "user-agent": "Mozilla/5.0" },
+    next: { revalidate: 900 },
+    timeoutMs: 9000,
+  });
+  if (!res?.ok) return { current: 0, previous: 0 };
+  const text = await res.text();
+  const numericLines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^[0-9][0-9.,]*(?:\s*[KMB])?$/.test(line))
+    .map((line) => parseCompactMetric(line))
+    .filter((value) => value > 0)
+    .slice(0, 20);
+  const current = numericLines.slice(0, 10).reduce((sum, value) => sum + value, 0);
+  const previous = numericLines.slice(10, 20).reduce((sum, value) => sum + value, 0);
+  return { current, previous };
+}
+
+async function fetchSocialTrafficSnapshot(searchStats: SearchInterestStats) {
+  const [reddit, youtube, facebook, threads] = await Promise.all([
+    fetchRedditTraffic(),
+    fetchYouTubeTraffic(),
+    fetchFacebookTraffic(),
+    fetchThreadsTraffic(),
+  ]);
+
+  const merged = {
+    "google-search": safeTrafficFromCache(
+      "google-search",
+      searchStats.todayTraffic,
+      searchStats.yesterdayTraffic,
+    ),
+    reddit: safeTrafficFromCache("reddit", reddit.current, reddit.previous),
+    youtube: safeTrafficFromCache("youtube", youtube.current, youtube.previous),
+    facebook: safeTrafficFromCache("facebook", facebook.facebookCurrent, facebook.facebookPrevious),
+    threads: safeTrafficFromCache("threads", threads.current, threads.previous),
+    "pokemon-official": safeTrafficFromCache(
+      "pokemon-official",
+      facebook.officialCurrent,
+      facebook.officialPrevious,
+    ),
+  } as SocialTrafficSnapshot;
+
+  lastSocialTrafficSnapshot = merged;
+  return merged;
+}
+
 // Derive demand proxy from daily Google Trends RSS.
 async function fetchSearchInterestStats(items: NewsItem[] = []): Promise<SearchInterestStats> {
   const fallbackFromNews = () => {
@@ -841,6 +1026,44 @@ function labelForScore(score: number) {
   if (score >= 45) return { label: "WARM", vibe: "Constructive but selective strength." };
   if (score >= 25) return { label: "CALM", vibe: "Balanced cycle, no major squeeze." };
   return { label: "DEAD", vibe: "Low attention and low market pressure." };
+}
+
+function buildTraderNarrative(args: {
+  score: number;
+  signalQuality: number;
+  components: SignalComponent[];
+}) {
+  const { score, signalQuality, components } = args;
+  const componentScore = (id: string) =>
+    components.find((component) => component.id === id)?.score ?? 50;
+  const momentum = componentScore("market_momentum");
+  const breadth = Math.round(
+    (componentScore("search_interest") +
+      componentScore("release_catalyst") +
+      componentScore("community_sentiment")) /
+      3,
+  );
+
+  const regime =
+    score >= 75
+      ? "Risk-On Expansion"
+      : score >= 55
+        ? "Constructive Risk-On"
+        : score >= 40
+          ? "Neutral / Two-Way"
+          : "Defensive Risk-Off";
+  const summary =
+    score >= 55
+      ? "Buyers control flow, but focus on confirmation and follow-through."
+      : score >= 40
+        ? "Tape is mixed; favor selective entries and tighter risk."
+        : "Capital preservation first; wait for stronger participation breadth.";
+  const momentumTag = momentum >= 60 ? "Trend Up" : momentum >= 45 ? "Range" : "Trend Soft";
+  const breadthTag = breadth >= 60 ? "Broad" : breadth >= 45 ? "Mixed" : "Narrow";
+  const convictionTag =
+    signalQuality >= 75 ? "High Conviction" : signalQuality >= 55 ? "Medium Conviction" : "Low Conviction";
+
+  return { regime, summary, momentumTag, breadthTag, convictionTag };
 }
 
 // Synthetic long-cycle baseline model used for contextual 30-year sentiment framing.
@@ -1497,6 +1720,14 @@ export default async function Home() {
   // Defensive defaults keep the page renderable even on upstream failures.
   let items: NewsItem[] = [];
   let searchStats: SearchInterestStats = { score: 35, todayTraffic: 0, yesterdayTraffic: 0 };
+  let socialTraffic: SocialTrafficSnapshot = lastSocialTrafficSnapshot ?? {
+    "google-search": { current: 0, previous: 0 },
+    reddit: { current: 0, previous: 0 },
+    youtube: { current: 0, previous: 0 },
+    facebook: { current: 0, previous: 0 },
+    threads: { current: 0, previous: 0 },
+    "pokemon-official": { current: 0, previous: 0 },
+  };
   let searchInterest = 35;
   let marketMomentum = 50;
   let eventCatalyst = 40;
@@ -1525,6 +1756,7 @@ export default async function Home() {
     fetchEventCatalystScore(),
     fetchCommunitySentimentScore(),
   ]);
+  socialTraffic = await fetchSocialTrafficSnapshot(searchStats);
   searchInterest = searchStats.score;
 
   const { score, indicators, communityScore, marketScore } = summarizeHype(items, {
@@ -1554,45 +1786,6 @@ export default async function Home() {
   const topArticles = [...items]
     .sort((a, b) => scoreArticleRelevance(b) - scoreArticleRelevance(a))
     .slice(0, 10);
-  const now = new Date();
-  const todayIso = now.toISOString().slice(0, 10);
-  const yesterdayIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const sourceCountsByDate = items.reduce(
-    (acc, item) => {
-      const iso = new Date(item.pubDate).toISOString().slice(0, 10);
-      const source = normalize(item.source);
-      if (!acc[iso]) {
-        acc[iso] = { all: 0, reddit: 0, youtube: 0, facebook: 0, official: 0 };
-      }
-      acc[iso].all += 1;
-      if (source.includes("reddit")) acc[iso].reddit += 1;
-      if (source.includes("youtube")) acc[iso].youtube += 1;
-      if (source.includes("facebook")) acc[iso].facebook += 1;
-      if (
-        source.includes("pokemon.com") ||
-        source.includes("the pokemon company") ||
-        source.includes("nintendo")
-      ) {
-        acc[iso].official += 1;
-      }
-      return acc;
-    },
-    {} as Record<string, { all: number; reddit: number; youtube: number; facebook: number; official: number }>,
-  );
-  const todayCounts = sourceCountsByDate[todayIso] ?? {
-    all: 0,
-    reddit: 0,
-    youtube: 0,
-    facebook: 0,
-    official: 0,
-  };
-  const yesterdayCounts = sourceCountsByDate[yesterdayIso] ?? {
-    all: 0,
-    reddit: 0,
-    youtube: 0,
-    facebook: 0,
-    official: 0,
-  };
   const pctDelta = (current: number, previous: number) => {
     if (current <= 0 && previous <= 0) return 0;
     if (previous <= 0) return 100;
@@ -1602,36 +1795,43 @@ export default async function Home() {
     {
       key: "google-search",
       label: "Google Search",
-      current: searchStats.todayTraffic,
-      previous: searchStats.yesterdayTraffic,
+      current: socialTraffic["google-search"].current,
+      previous: socialTraffic["google-search"].previous,
       accent: "from-cyan-400 to-blue-500",
     },
     {
       key: "reddit",
       label: "Reddit",
-      current: todayCounts.reddit,
-      previous: yesterdayCounts.reddit,
+      current: socialTraffic.reddit.current,
+      previous: socialTraffic.reddit.previous,
       accent: "from-orange-400 to-amber-500",
     },
     {
       key: "youtube",
       label: "YouTube",
-      current: todayCounts.youtube,
-      previous: yesterdayCounts.youtube,
+      current: socialTraffic.youtube.current,
+      previous: socialTraffic.youtube.previous,
       accent: "from-red-400 to-rose-500",
     },
     {
       key: "facebook",
       label: "Facebook",
-      current: todayCounts.facebook,
-      previous: yesterdayCounts.facebook,
+      current: socialTraffic.facebook.current,
+      previous: socialTraffic.facebook.previous,
       accent: "from-indigo-400 to-blue-500",
+    },
+    {
+      key: "threads",
+      label: "Threads",
+      current: socialTraffic.threads.current,
+      previous: socialTraffic.threads.previous,
+      accent: "from-violet-400 to-fuchsia-500",
     },
     {
       key: "pokemon-official",
       label: "Pokemon Official",
-      current: todayCounts.official,
-      previous: yesterdayCounts.official,
+      current: socialTraffic["pokemon-official"].current,
+      previous: socialTraffic["pokemon-official"].previous,
       accent: "from-fuchsia-400 to-purple-500",
     },
   ];
@@ -1649,6 +1849,11 @@ export default async function Home() {
   const pokemonCatalog = await fetchPokemonNameCatalog();
   const pokemonOfDayArticle = pickArticleOfDay(items, pokemonCatalog);
   const pokemonOfDay = await pickPokemonOfDayFromArticle(pokemonOfDayArticle, pokemonCatalog);
+  const traderNarrative = buildTraderNarrative({
+    score,
+    signalQuality: liveSignalQuality,
+    components: indicators,
+  });
 
   // Single timestamp used as visible "last refreshed" marker in header.
   const updatedAt = new Date().toLocaleString("en-US", {
@@ -1768,7 +1973,7 @@ export default async function Home() {
 
         <ScrollReveal delayMs={60}>
           <section className="grid items-stretch gap-6 lg:grid-cols-2">
-          <div className="h-full rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
+          <div className="h-full rounded-3xl border border-white/10 bg-slate-900 p-7 hover-lift">
             <div className="flex flex-wrap items-end justify-between gap-6">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
@@ -1779,9 +1984,9 @@ export default async function Home() {
                   <span className="text-2xl text-slate-400">/100</span>
                 </h2>
                 <p className="mt-1 text-lg font-semibold text-fuchsia-300">
-                  {mood.label}
+                  {traderNarrative.regime}
                 </p>
-                <p className="text-sm text-slate-400">{mood.vibe}</p>
+                <p className="max-w-md text-sm text-slate-400">{traderNarrative.summary}</p>
               </div>
               <div className="group relative h-40 w-40 rounded-full p-3 ring-1 ring-white/20">
                 <div
@@ -1803,6 +2008,20 @@ export default async function Home() {
                 className={`h-full rounded-full bg-gradient-to-r ${meterColor(score)}`}
                 style={{ width: `${score}%` }}
               />
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Momentum</p>
+                <p className="text-sm font-semibold text-cyan-300">{traderNarrative.momentumTag}</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Breadth</p>
+                <p className="text-sm font-semibold text-cyan-300">{traderNarrative.breadthTag}</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Conviction</p>
+                <p className="text-sm font-semibold text-cyan-300">{traderNarrative.convictionTag}</p>
+              </div>
             </div>
             <div className="mt-3 rounded-xl border border-white/10 bg-slate-800/80 p-3">
               <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
@@ -1897,10 +2116,14 @@ export default async function Home() {
                 Social Signal Pulse
               </p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {platformGraph.map((platform) => (
+                {platformGraph.map((platform, index) => (
                   <article
                     key={`compact-${platform.key}`}
-                    className="rounded-xl border border-white/10 bg-slate-900 p-2.5"
+                    className={`rounded-xl border border-white/10 bg-slate-900 p-2.5 ${
+                      platformGraph.length % 2 === 1 && index === platformGraph.length - 1
+                        ? "sm:col-span-2"
+                        : ""
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
