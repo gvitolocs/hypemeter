@@ -150,7 +150,7 @@ export default function HypeBacktrackingChart({
   }, [highlightSeries]);
 
   return (
-    <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_minmax(6.25rem,auto)] rounded-2xl border border-white/10 bg-slate-950 px-3 pt-3 pb-2">
+    <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] rounded-2xl border border-white/10 bg-slate-950 px-3 pt-3 pb-2">
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="flex min-h-[4.75rem] flex-col justify-center rounded-lg border border-white/10 bg-slate-900 p-2">
           <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">selected</p>
@@ -337,15 +337,15 @@ export default function HypeBacktrackingChart({
       </svg>
       </div>
 
-      <div className="mt-2 flex shrink-0 flex-col justify-between gap-2 border-t border-white/5 pt-2">
-        <div className="flex shrink-0 flex-nowrap items-center justify-between gap-2 overflow-x-auto text-xs tabular-nums text-slate-400">
+      <div className="mt-2 flex shrink-0 flex-col gap-1.5 border-t border-white/5 pt-2">
+        <div className="flex shrink-0 flex-nowrap items-center justify-between gap-2 overflow-x-auto text-[11px] tabular-nums text-slate-400">
           <span>{history[0]?.year}</span>
           <span>{history[Math.floor(history.length / 4)]?.year}</span>
           <span>{history[Math.floor(history.length / 2)]?.year}</span>
           <span>{history[Math.floor((history.length * 3) / 4)]?.year}</span>
           <span>{history[history.length - 1]?.year}</span>
         </div>
-        <p className="min-h-[2.75rem] shrink-0 text-[10px] leading-snug text-slate-500 sm:text-[11px]">
+        <p className="shrink-0 text-[10px] leading-snug text-slate-500 sm:text-[11px]">
           <span className="text-slate-500/90">Scrub horizontally</span> to pick a year.{" "}
           <span className="text-fuchsia-300/90">Fuchsia</span> = hype peaks (cyan line).{" "}
           {marketLines && marketLines.length > 0 ? (
@@ -357,7 +357,7 @@ export default function HypeBacktrackingChart({
             </>
           ) : null}
         </p>
-        <div className="min-h-[1.75rem] shrink-0">
+        <div className="shrink-0">
           {activeEvents.length > 0 ? (
             <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap">
               {activeEvents.map((event) => (

@@ -48,8 +48,8 @@ export default function BacktrackMarketSection({
           First year: {history[0]?.year} • Latest: {history[history.length - 1]?.year}
         </p>
       </div>
-      <div className="mt-4 grid min-w-0 items-stretch gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.7fr)]">
-        <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <div className="mt-4 grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,16rem)] lg:items-stretch">
+        <div className="min-w-0 self-stretch lg:min-h-0">
           <HypeBacktrackingChart
             history={history}
             events={events}
@@ -57,15 +57,15 @@ export default function BacktrackMarketSection({
             highlightSeries={highlight}
           />
         </div>
-        <aside className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-4 hover-lift">
+        <aside className="relative w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-3 hover-lift sm:p-4 lg:w-auto lg:max-w-none lg:shrink-0">
           <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Market Sidecar</p>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-3 space-y-2">
             <a
               href={YAHOO_QUOTE_SP500}
               target="_blank"
               rel="noopener noreferrer"
-              className={`flex h-[7.25rem] flex-col justify-between rounded-xl border bg-slate-900 p-3 transition-colors hover:bg-slate-900/90 ${
+              className={`flex flex-col gap-1 rounded-xl border bg-slate-900/90 px-3 py-2.5 transition-colors hover:bg-slate-900 ${
                 highlight === "sp500"
                   ? "border-emerald-400/70 ring-1 ring-emerald-400/30"
                   : "border-white/10 hover:border-emerald-400/45"
@@ -73,13 +73,13 @@ export default function BacktrackMarketSection({
               onMouseEnter={() => setHighlight("sp500")}
               onMouseLeave={() => setHighlight(null)}
             >
-              <p className="text-xs uppercase tracking-[0.12em] text-slate-400">S&P 500</p>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">S&P 500</p>
               <p
-                className={`text-2xl font-bold tabular-nums leading-none ${growthPctColorClass(market.sp500GrowthPct, "sp500")}`}
+                className={`text-xl font-bold tabular-nums leading-tight sm:text-2xl ${growthPctColorClass(market.sp500GrowthPct, "sp500")}`}
               >
                 {formatGrowthPct(market.sp500GrowthPct)}
               </p>
-              <p className="line-clamp-2 min-h-[2.5rem] text-[11px] leading-snug text-slate-500">
+              <p className="text-[11px] leading-snug text-slate-500">
                 level: {formatUsd(market.sp500)}
               </p>
             </a>
@@ -87,7 +87,7 @@ export default function BacktrackMarketSection({
               href={YAHOO_QUOTE_BTC}
               target="_blank"
               rel="noopener noreferrer"
-              className={`flex h-[7.25rem] flex-col justify-between rounded-xl border bg-slate-900 p-3 transition-colors hover:bg-slate-900/90 ${
+              className={`flex flex-col gap-1 rounded-xl border bg-slate-900/90 px-3 py-2.5 transition-colors hover:bg-slate-900 ${
                 highlight === "btc"
                   ? "border-amber-400/70 ring-1 ring-amber-400/30"
                   : "border-white/10 hover:border-amber-400/45"
@@ -95,13 +95,13 @@ export default function BacktrackMarketSection({
               onMouseEnter={() => setHighlight("btc")}
               onMouseLeave={() => setHighlight(null)}
             >
-              <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Bitcoin</p>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Bitcoin</p>
               <p
-                className={`text-2xl font-bold tabular-nums leading-none ${growthPctColorClass(market.bitcoinGrowthPct, "btc")}`}
+                className={`text-xl font-bold tabular-nums leading-tight sm:text-2xl ${growthPctColorClass(market.bitcoinGrowthPct, "btc")}`}
               >
                 {formatGrowthPct(market.bitcoinGrowthPct)}
               </p>
-              <p className="line-clamp-2 min-h-[2.5rem] text-[11px] leading-snug text-slate-500">
+              <p className="text-[11px] leading-snug text-slate-500">
                 level: {formatUsd(market.bitcoin)}
               </p>
             </a>
@@ -109,7 +109,7 @@ export default function BacktrackMarketSection({
               href={YAHOO_QUOTE_NTDY}
               target="_blank"
               rel="noopener noreferrer"
-              className={`flex h-[7.25rem] flex-col justify-between rounded-xl border bg-slate-900 p-3 transition-colors hover:bg-slate-900/90 ${
+              className={`flex flex-col gap-1 rounded-xl border bg-slate-900/90 px-3 py-2.5 transition-colors hover:bg-slate-900 ${
                 highlight === "nintendo"
                   ? "border-rose-400/70 ring-1 ring-rose-400/30"
                   : "border-white/10 hover:border-rose-400/45"
@@ -117,13 +117,13 @@ export default function BacktrackMarketSection({
               onMouseEnter={() => setHighlight("nintendo")}
               onMouseLeave={() => setHighlight(null)}
             >
-              <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Nintendo (NTDOY)</p>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Nintendo (NTDOY)</p>
               <p
-                className={`text-2xl font-bold tabular-nums leading-none ${growthPctColorClass(market.nintendoGrowthPct, "nintendo")}`}
+                className={`text-xl font-bold tabular-nums leading-tight sm:text-2xl ${growthPctColorClass(market.nintendoGrowthPct, "nintendo")}`}
               >
                 {formatGrowthPct(market.nintendoGrowthPct)}
               </p>
-              <p className="line-clamp-2 min-h-[2.5rem] text-[11px] leading-snug text-slate-500">
+              <p className="text-[11px] leading-snug text-slate-500">
                 level: {formatUsd(market.nintendo)}
                 {market.nintendoPreviousClose !== null ? (
                   <span className="text-slate-500">
@@ -135,7 +135,7 @@ export default function BacktrackMarketSection({
             </a>
           </div>
 
-          <p className="mt-3 text-[10px] leading-tight text-slate-600">
+          <p className="mt-2 text-[10px] leading-tight text-slate-600">
             {market.updatedAt ?? "—"} · {deploymentSha ?? "local"}
           </p>
         </aside>
