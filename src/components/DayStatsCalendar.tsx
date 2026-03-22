@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DayStatsResponse } from "@/lib/dayCalendarTypes";
 import {
+  DAY_CALENDAR_STORAGE_KEY,
   emptyPersisted,
   loadDayCalendarPersisted,
   mergeDayPayload,
@@ -94,9 +95,22 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
     setHydrated(true);
   }, []);
 
-  const persist = useCallback((next: DayCalendarPersisted) => {
-    setPersisted(next);
-    saveDayCalendarPersisted(next);
+  /** When changing month, reload from localStorage so heatmap shows frozen past data without refetch. */
+  useEffect(() => {
+    if (!hydrated) return;
+    setPersisted(loadDayCalendarPersisted());
+  }, [visibleMonth, hydrated]);
+
+  /** Other tabs may write the same key; keep this tab in sync. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === DAY_CALENDAR_STORAGE_KEY) {
+        setPersisted(loadDayCalendarPersisted());
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const loadDay = useCallback(async (date: string) => {
@@ -143,9 +157,21 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
     void loadDay(selectedDate);
   }, [initialData, loadDay, selectedDate]);
 
-  /** Backfill month heatmap: fetch missing scores (reads latest cache from storage each run). */
+  /**
+   * Backfill month heatmap: fetch only days missing from localStorage.
+   * Past-day scores are immutable — do not depend on `Date` object identity in deps (that retriggered every render).
+   */
   useEffect(() => {
     if (!hydrated) return;
+
+    const nowDay = startOfLocalDay(new Date());
+    const min = new Date(nowDay);
+    min.setFullYear(min.getFullYear() - 5);
+
+    const dates = isoDatesInMonthWindow(visibleMonth, min, nowDay);
+    const p = loadDayCalendarPersisted();
+    if (dates.every((d) => p.scores[d] !== undefined)) return;
+
     const gen = ++prefetchGen.current;
     let cancelled = false;
     const concurrency = 2;
@@ -153,9 +179,9 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
     (async () => {
       const attempted = new Set<string>();
       while (!cancelled && prefetchGen.current === gen) {
-        const p = loadDayCalendarPersisted();
-        const dates = isoDatesInMonthWindow(visibleMonth, minDate, now);
-        const missing = dates.filter((d) => p.scores[d] === undefined && !attempted.has(d));
+        const p2 = loadDayCalendarPersisted();
+        const dates2 = isoDatesInMonthWindow(visibleMonth, min, nowDay);
+        const missing = dates2.filter((d) => p2.scores[d] === undefined && !attempted.has(d));
         if (missing.length === 0) break;
         const slice = missing.slice(0, concurrency);
         for (const d of slice) attempted.add(d);
@@ -183,7 +209,7 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, visibleMonth, minDate, now, todayIso]);
+  }, [hydrated, visibleMonth, todayIso]);
 
   /** Seed cache from initial home payload (today). */
   useEffect(() => {
