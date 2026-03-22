@@ -385,28 +385,45 @@ function parseApproxTraffic(raw: string) {
 }
 
 // Derive demand proxy from daily Google Trends RSS.
-async function fetchSearchInterestScore() {
+async function fetchSearchInterestScore(items: NewsItem[] = []) {
+  const fallbackFromNews = () => {
+    if (items.length === 0) return 35;
+    const recent24 = items.filter((item) => hoursAgo(item.pubDate) <= 24).length;
+    // Strong non-zero floor when Pokemon headlines are clearly active.
+    return clampScore(24 + Math.min(34, items.length * 1.25) + Math.min(18, recent24 * 1.9));
+  };
+
   try {
     const response = await fetch(GOOGLE_TRENDS_DAILY_RSS, { next: { revalidate: 900 } });
-    if (!response.ok) return 35;
+    if (!response.ok) return fallbackFromNews();
     const xml = await response.text();
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
     const keywordRegex =
-      /(pokemon cards|pokemon tcg|pokemon center preorder|pokemon center|pokemon)/i;
+      /(pokemon cards|pokemon tcg|pokemon center preorder|pokemon center|pokemon|pokémon|pokemon go|pokemon presents|pokemon direct)/i;
     let totalTraffic = 0;
+    let pokemonTrendHits = 0;
     let match = itemRegex.exec(xml);
     while (match) {
       const item = match[1];
       const title = readTag(item, "title");
       const trafficRaw = readTag(item, "ht:approx_traffic");
       if (keywordRegex.test(title)) {
+        pokemonTrendHits += 1;
         totalTraffic += parseApproxTraffic(trafficRaw);
       }
       match = itemRegex.exec(xml);
     }
-    return clampScore((Math.log10(totalTraffic + 1) / 6) * 100);
+
+    const trendScore = clampScore((Math.log10(totalTraffic + 1) / 6) * 100 + pokemonTrendHits * 6);
+    const fallback = fallbackFromNews();
+    if (pokemonTrendHits === 0 || trendScore <= 0) {
+      return fallback;
+    }
+
+    // Blend trend RSS with live Pokemon news activity, keeping search signal meaningful.
+    return clampScore(Math.max(trendScore, fallback * 0.74 + trendScore * 0.26));
   } catch {
-    return 35;
+    return fallbackFromNews();
   }
 }
 
@@ -645,24 +662,24 @@ function summarizeHype(
     ? clampScore(50 + (productStressRaw - 50) * confidence)
     : 32;
 
-  const activityFloor = clampScore(8 + (recent24 / 30) * 20);
+  const activityFloor = clampScore(12 + (recent24 / 28) * 24);
   const searchInterestScore = hasNews
-    ? Math.max(external.searchInterest, Math.min(activityFloor, 34))
+    ? Math.max(external.searchInterest, Math.min(activityFloor, 52))
     : external.searchInterest;
 
   const components: SignalComponent[] = [
     {
       id: "search_interest",
       label: "Search Interest",
-      weight: 0.2,
+      weight: 0.3,
       score: searchInterestScore,
-      description: "Google Trends proxy for retail/fan demand.",
+      description: "Primary demand driver from Google search intensity.",
       group: "community",
     },
     {
       id: "market_momentum",
       label: "Market Momentum",
-      weight: 0.25,
+      weight: 0.2,
       score: external.marketMomentum,
       description: "PriceCharting momentum proxy on cards/sealed assets.",
       group: "market",
@@ -670,7 +687,7 @@ function summarizeHype(
     {
       id: "availability_pressure",
       label: "Availability Pressure",
-      weight: 0.2,
+      weight: 0.17,
       score: availabilityPressureScore,
       description: "Confidence-adjusted sellout/preorder scarcity density.",
       group: "market",
@@ -678,7 +695,7 @@ function summarizeHype(
     {
       id: "release_catalyst",
       label: "Release/Event Catalyst",
-      weight: 0.15,
+      weight: 0.13,
       score: external.eventCatalyst,
       description: "Boost from reveals, releases, Presents, major updates.",
       group: "community",
@@ -1363,7 +1380,7 @@ export default async function Home() {
 
   // Pull independent external signals in parallel to minimize latency.
   [searchInterest, marketMomentum, eventCatalyst, communitySentiment] = await Promise.all([
-    fetchSearchInterestScore(),
+    fetchSearchInterestScore(items),
     fetchMarketMomentumScore(market),
     fetchEventCatalystScore(),
     fetchCommunitySentimentScore(),
@@ -1408,33 +1425,77 @@ export default async function Home() {
     },
     { reddit: 0, youtube: 0, facebook: 0, official: 0 },
   );
+  const now = new Date();
+  const todayIso = now.toISOString().slice(0, 10);
+  const yesterdayIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const sourceCountsByDate = items.reduce(
+    (acc, item) => {
+      const iso = new Date(item.pubDate).toISOString().slice(0, 10);
+      const source = normalize(item.source);
+      if (!acc[iso]) {
+        acc[iso] = { all: 0, reddit: 0, youtube: 0, facebook: 0, official: 0 };
+      }
+      acc[iso].all += 1;
+      if (source.includes("reddit")) acc[iso].reddit += 1;
+      if (source.includes("youtube")) acc[iso].youtube += 1;
+      if (source.includes("facebook")) acc[iso].facebook += 1;
+      if (
+        source.includes("pokemon.com") ||
+        source.includes("the pokemon company") ||
+        source.includes("nintendo")
+      ) {
+        acc[iso].official += 1;
+      }
+      return acc;
+    },
+    {} as Record<string, { all: number; reddit: number; youtube: number; facebook: number; official: number }>,
+  );
+  const todayCounts = sourceCountsByDate[todayIso] ?? {
+    all: 0,
+    reddit: 0,
+    youtube: 0,
+    facebook: 0,
+    official: 0,
+  };
+  const yesterdayCounts = sourceCountsByDate[yesterdayIso] ?? {
+    all: 0,
+    reddit: 0,
+    youtube: 0,
+    facebook: 0,
+    official: 0,
+  };
+  const pctDelta = (current: number, previous: number) => {
+    if (current <= 0 && previous <= 0) return 0;
+    if (previous <= 0) return 100;
+    return ((current - previous) / previous) * 100;
+  };
   const platformGraph = [
     {
       key: "google-search",
       label: "Google Search",
       value: searchInterest,
-      detail: `${searchInterest}/100 interest`,
+      deltaPct: pctDelta(todayCounts.all, yesterdayCounts.all),
       accent: "from-cyan-400 to-blue-500",
     },
     {
       key: "reddit",
       label: "Reddit",
       value: clampScore((sourceCounts.reddit / Math.max(1, items.length)) * 100 * 1.7),
-      detail: `${sourceCounts.reddit} headlines`,
+      deltaPct: pctDelta(todayCounts.reddit, yesterdayCounts.reddit),
       accent: "from-orange-400 to-amber-500",
     },
     {
       key: "youtube",
       label: "YouTube",
       value: clampScore((sourceCounts.youtube / Math.max(1, items.length)) * 100 * 2),
-      detail: `${sourceCounts.youtube} headlines`,
+      deltaPct: pctDelta(todayCounts.youtube, yesterdayCounts.youtube),
       accent: "from-red-400 to-rose-500",
     },
     {
       key: "facebook",
       label: "Facebook",
       value: clampScore((sourceCounts.facebook / Math.max(1, items.length)) * 100 * 1.7),
-      detail: `${sourceCounts.facebook} headlines`,
+      deltaPct: pctDelta(todayCounts.facebook, yesterdayCounts.facebook),
       accent: "from-indigo-400 to-blue-500",
     },
     {
@@ -1443,7 +1504,7 @@ export default async function Home() {
       value: clampScore(
         (sourceCounts.official / Math.max(1, items.length)) * 100 * 1.8 + eventCatalyst * 0.2,
       ),
-      detail: `${sourceCounts.official} official-source headlines`,
+      deltaPct: pctDelta(todayCounts.official, yesterdayCounts.official),
       accent: "from-fuchsia-400 to-purple-500",
     },
   ];
@@ -1662,9 +1723,9 @@ export default async function Home() {
               How this meter works
             </h3>
             <p className="mt-3 text-sm text-slate-400">
-              Composite index with 6 weighted components: Search Interest (20%),
-              Market Momentum (25%), Availability Pressure (20%), Event Catalyst
-              (15%), Community Sentiment (10%), Product Stress (10%).
+              Composite index with 6 weighted components: Search Interest (30%),
+              Market Momentum (20%), Availability Pressure (17%), Event Catalyst
+              (13%), Community Sentiment (10%), Product Stress (10%).
             </p>
             <a
               className="mt-4 inline-block text-sm font-semibold text-cyan-300 hover:text-cyan-200"
@@ -1819,7 +1880,13 @@ export default async function Home() {
                       style={{ width: `${platform.value}%` }}
                     />
                   </div>
-                  <p className="mt-2 text-[11px] text-slate-400">{platform.detail}</p>
+                  <p
+                    className={`mt-2 text-[11px] ${
+                      platform.deltaPct >= 0 ? "text-emerald-300" : "text-rose-300"
+                    }`}
+                  >
+                    {platform.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(platform.deltaPct).toFixed(0)}% vs day before
+                  </p>
                 </article>
               ))}
             </div>
