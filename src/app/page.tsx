@@ -1290,8 +1290,12 @@ function sourceQuality(source: string) {
 
 function scoreArticleRelevance(item: NewsItem) {
   const title = normalize(item.title);
+  const source = normalize(item.source);
+  const link = normalize(item.link);
   let score = 0;
   score += sourceQuality(item.source) * 4;
+  // Strong priority for official Pokemon.com coverage in the article-of-day pipeline.
+  if (source.includes("pokemon.com") || link.includes("pokemon.com")) score += 50;
   if (/(pokemon|pokémon)/i.test(item.title)) score += 3;
   if (/(direct|presents|reveal|announcement|launch|release|expansion|worlds|championship)/i.test(item.title)) {
     score += 4;
