@@ -92,12 +92,29 @@ export async function fetchCardTraderImageBytesUncached(imageUrl: string): Promi
 
 /**
  * Cached bytes per **calendar day** + URL — same file until Europe/Rome midnight.
+ * `unstable_cache` must receive a **structured-clone-serializable** payload; raw `Buffer`
+ * can round-trip as empty — store base64 and decode in the public helper.
  */
-export const getCachedCardHighlightImage = unstable_cache(
+const getCachedCardHighlightImageInner = unstable_cache(
   async (imageUrl: string, dayKey: string) => {
     void dayKey;
-    return fetchCardTraderImageBytesUncached(imageUrl);
+    const data = await fetchCardTraderImageBytesUncached(imageUrl);
+    return {
+      bodyB64: data.body.toString("base64"),
+      contentType: data.contentType,
+    };
   },
-  ["card-highlight-image-bytes-v2"],
+  ["card-highlight-image-bytes-v3"],
   { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC },
 );
+
+export async function getCachedCardHighlightImage(
+  imageUrl: string,
+  dayKey: string,
+): Promise<{ body: Buffer; contentType: string }> {
+  const row = await getCachedCardHighlightImageInner(imageUrl, dayKey);
+  return {
+    body: Buffer.from(row.bodyB64, "base64"),
+    contentType: row.contentType,
+  };
+}
