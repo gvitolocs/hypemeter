@@ -95,19 +95,34 @@ function gatherCardProductUrls(section: string): string[] {
 }
 
 /**
- * Strip Jina/markdown junk before the real card title (e.g. ".jpg) Gloom …", "](url.png) …").
+ * Strip Jina/markdown/HTML junk before the real card title (e.g. ".jpg) Gloom …", "](url.png) …").
  */
 export function sanitizeCardHighlightName(raw: string): string {
   let s = raw.trim();
   if (!s) return "";
-  // Trailing link close + URL in parens often leaks into the label
-  s = s.replace(/^\]\([^)]*\)\s*/g, "");
-  // ".jpg)" / ".png)" left when markdown breaks across lines
-  s = s.replace(/^\.(?:png|jpe?g|webp|gif)\)\s*/i, "");
-  // Lone extension at start
-  s = s.replace(/^\.(?:png|jpe?g|webp)\s+/i, "");
-  // Any remaining "](...image...)" prefix
-  s = s.replace(/^\]\([^)]*\.(?:png|jpe?g|webp|gif)[^)]*\)\s*/i, "");
+  // Raw HTML slices (path 3) often include tags before the visible title
+  s = s.replace(/<[^>]+>/g, " ");
+  // Markdown images ![alt](url) — may repeat or nest badly in Jina output
+  for (let i = 0; i < 6; i++) {
+    const next = s.replace(/!\[[^\]]*\]\([^)]*\)\s*/g, "");
+    if (next === s) break;
+    s = next;
+  }
+  // Trailing link close + URL in parens
+  s = s.replace(/\]\([^)]*\)/g, "");
+  // ".jpg)" / ".png)" (ASCII or fullwidth dot before extension)
+  for (let i = 0; i < 6; i++) {
+    const before = s;
+    s = s.replace(
+      /^[\s"'`«»\[\]()]*[\.\uFF0E](?:png|jpe?g|webp|gif)\)\s*/i,
+      "",
+    );
+    s = s.replace(/^\.(?:png|jpe?g|webp|gif)\)\s*/i, "");
+    s = s.replace(/^[\s"'`«»\[\]]*\.(?:png|jpe?g|webp)\s+/i, "");
+    if (s === before) break;
+  }
+  // Leftover "url.jpg)" without leading dot (broken markdown)
+  s = s.replace(/^[\s"'`«»\[\]]*(?:[a-z0-9_-]+\.)+(?:png|jpe?g|webp|gif)\)\s*/i, "");
   s = s.replace(/\s+/g, " ").trim();
   return s;
 }
@@ -221,7 +236,17 @@ export function parseCardTraderBestSellerFromText(fullText: string): CardTraderB
   const looseHttpsImages = [
     ...section.matchAll(/https:\/\/[^\s\)"']+\.(?:png|jpe?g|webp|gif)(?:\?[^\s\)"']*)?/gi),
   ].map((m) => m[0]);
-  const allImageCandidates = [...gatherImageCandidates(section), ...looseHttpsImages];
+  /** Relative uploads paths in HTML (must become absolute for Next/Image). */
+  const relativeUploadImages = [
+    ...section.matchAll(
+      /(?:src|data-src)=["'](\/uploads\/[^"']+\.(?:png|jpe?g|webp|gif)(?:\?[^"']*)?)["']/gi,
+    ),
+  ].map((m) => m[1]);
+  const allImageCandidates = [
+    ...gatherImageCandidates(section),
+    ...relativeUploadImages,
+    ...looseHttpsImages,
+  ];
   const bestImage = pickBestCardImageUrl(allImageCandidates);
 
   if (result && bestImage) {
@@ -234,6 +259,14 @@ export function parseCardTraderBestSellerFromText(fullText: string): CardTraderB
   }
 
   if (!result) dbg("no match");
+  if (result) {
+    result = {
+      ...result,
+      name: sanitizeCardHighlightName(result.name),
+      imageUrl: normalizeCardtraderAssetUrl(result.imageUrl),
+      cardUrl: normalizeCardtraderAssetUrl(result.cardUrl),
+    };
+  }
   return result;
 }
 

@@ -16,6 +16,13 @@ describe("sanitizeCardHighlightName", () => {
     expect(sanitizeCardHighlightName("](https://cdn/x.png) Card Title")).toBe("Card Title");
     expect(sanitizeCardHighlightName(".png) Pikachu")).toBe("Pikachu");
   });
+  it("strips HTML and markdown image junk before the title", () => {
+    expect(
+      sanitizeCardHighlightName(
+        '<img src="/x.jpg" /> .jpg) Gloom Obsidian Flames Special Illustration Rare',
+      ),
+    ).toBe("Gloom Obsidian Flames Special Illustration Rare");
+  });
 });
 
 describe("fetchCardTraderBestSeller", () => {
@@ -77,6 +84,7 @@ https://www.cardtrader.com/en/pokemon/cards/only-link
 </a>`;
     const r = parseCardTraderBestSellerFromText(html);
     expect(r).not.toBeNull();
+    expect(r!.imageUrl).toContain("https://www.cardtrader.com");
     expect(r!.imageUrl).toContain("uploads/blueprints");
     expect(r!.cardUrl).toContain("cardtrader.com");
   });

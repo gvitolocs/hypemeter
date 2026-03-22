@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "www.cardtrader.com", pathname: "/**" },
       { protocol: "https", hostname: "cardtrader.com", pathname: "/**" },
       { protocol: "https", hostname: "en.cardtrader.com", pathname: "/**" },
+      { protocol: "https", hostname: "*.cardtrader.com", pathname: "/**" },
     ],
   },
 };

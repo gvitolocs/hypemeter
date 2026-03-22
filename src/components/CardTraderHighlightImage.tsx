@@ -5,6 +5,16 @@ import { useCallback, useState } from "react";
 
 const PLACEHOLDER = "/card-highlight-placeholder.svg";
 
+/** Relative CardTrader paths must load from their origin, not the app host. */
+function resolveRemoteCardImageSrc(src: string): string {
+  const t = src.trim();
+  if (!t) return "";
+  if (t.startsWith("/uploads/") || t.startsWith("/assets/")) {
+    return `https://www.cardtrader.com${t}`;
+  }
+  return t;
+}
+
 type Props = {
   src: string;
   alt: string;
@@ -23,7 +33,7 @@ export function CardTraderHighlightImage({ src, alt, width, height, className }:
     setUsePlaceholder(true);
   }, []);
 
-  const effective = usePlaceholder ? PLACEHOLDER : src.trim();
+  const effective = usePlaceholder ? PLACEHOLDER : resolveRemoteCardImageSrc(src);
 
   return (
     <Image
