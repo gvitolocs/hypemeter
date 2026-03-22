@@ -9,11 +9,10 @@ import type { MarketHighlightKey, MarketYearlyOverlay } from "@/lib/marketBacktr
 import {
   BINANCE_BTC_USDT,
   COINGECKO_BTC,
+  STOOQ_QUOTE_7974_JP,
   STOOQ_QUOTE_BTCUSD,
   STOOQ_QUOTE_SPX,
-  YAHOO_QUOTE_7974T,
   YAHOO_QUOTE_BTC,
-  YAHOO_QUOTE_NTDY,
   YAHOO_QUOTE_SP500,
 } from "@/lib/yahooQuotes";
 
@@ -199,7 +198,7 @@ export default function BacktrackMarketSection({
               </p>
             </a>
             <a
-              href={market.nintendoSource === "tokyo" ? YAHOO_QUOTE_7974T : YAHOO_QUOTE_NTDY}
+              href={STOOQ_QUOTE_7974_JP}
               target="_blank"
               rel="noopener noreferrer"
               className={`flex flex-col gap-1 rounded-xl border bg-slate-900/90 px-3 py-2.5 transition-colors hover:bg-slate-900 ${
