@@ -20,16 +20,90 @@ function dbg(...args: unknown[]) {
   }
 }
 
+const CARDTRADER_ORIGIN = "https://www.cardtrader.com";
+
+/** Turn relative CardTrader paths (e.g. `/uploads/blueprints/...`) into absolute URLs. */
+export function normalizeCardtraderAssetUrl(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  if (t.startsWith("//")) return `https:${t}`;
+  if (t.startsWith("/")) return `${CARDTRADER_ORIGIN}${t}`;
+  return t;
+}
+
+/** Card listing pages use a back placeholder (`/assets/fallbacks/.../show.png`) before the real scan in `/uploads/blueprints/...`. */
+function isUndesirableCardImageUrl(url: string): boolean {
+  const u = url.toLowerCase();
+  return (
+    /\/assets\/fallbacks\//i.test(u) ||
+    /card_uploader\/show\.png/i.test(u) ||
+    /\/assets\/.*\/show\.png$/i.test(u) ||
+    (/show\.png$/i.test(u) && !/\/uploads\//i.test(u))
+  );
+}
+
+function scoreCardImageCandidate(url: string): number {
+  if (!url.trim()) return -9999;
+  const n = normalizeCardtraderAssetUrl(url);
+  if (!n || isUndesirableCardImageUrl(n)) return -1000;
+  const u = n.toLowerCase();
+  if (/\/uploads\/blueprints\//i.test(u)) return 100;
+  if (/\/uploads\//i.test(u)) return 70;
+  if (/\.(jpe?g|webp)(\?|$)/i.test(u)) return 25;
+  if (/\.png(\?|$)/i.test(u)) return 15;
+  return 5;
+}
+
+/** Prefer blueprint card art over hub fallbacks when multiple <img> exist (e.g. back + front flipper). */
+export function pickBestCardImageUrl(candidates: string[]): string {
+  const normalized = [...new Set(candidates.map(normalizeCardtraderAssetUrl).filter(Boolean))];
+  if (normalized.length === 0) return "";
+  const sorted = [...normalized].sort((a, b) => scoreCardImageCandidate(b) - scoreCardImageCandidate(a));
+  const best = sorted.find((u) => scoreCardImageCandidate(u) > 0);
+  return best ?? sorted[0] ?? "";
+}
+
 function looksLikeImageUrl(u: string): boolean {
-  const s = u.trim();
-  if (!/^https:\/\//i.test(s)) return false;
-  return /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(s) || /\/uploads\//i.test(s) || /\/images?\//i.test(s);
+  const n = normalizeCardtraderAssetUrl(u);
+  if (!n) return false;
+  return /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(n) || /\/uploads\//i.test(n) || /\/images?\//i.test(n);
 }
 
 function looksLikeCardProductUrl(u: string): boolean {
-  if (!/cardtrader\.com/i.test(u)) return false;
-  if (/cardtrader\.com\/en\/pokemon\/?$/i.test(u)) return false;
-  return /\/(cards|products|sell)\//i.test(u);
+  const n = normalizeCardtraderAssetUrl(u);
+  if (!/cardtrader\.com/i.test(n)) return false;
+  if (/cardtrader\.com\/en\/pokemon\/?$/i.test(n)) return false;
+  return /\/(cards|products|sell)\//i.test(n);
+}
+
+/** All plausible card / listing URLs (absolute or site-relative). */
+function gatherCardProductUrls(section: string): string[] {
+  const out: string[] = [];
+  for (const m of section.matchAll(
+    /https:\/\/(?:www\.)?cardtrader\.com[^"'()\s]*\/cards\/[^"'()\s]*/gi,
+  )) {
+    out.push(m[0]);
+  }
+  for (const m of section.matchAll(/href=["'](\/(?:en\/)?cards\/[^"']+)["']/gi)) {
+    out.push(normalizeCardtraderAssetUrl(m[1]));
+  }
+  for (const m of section.matchAll(/href=["'](\/cards\/[^"']+)["']/gi)) {
+    out.push(normalizeCardtraderAssetUrl(m[1]));
+  }
+  return [...new Set(out)].filter((u) => looksLikeCardProductUrl(u));
+}
+
+/** Markdown images + HTML img src (relative or absolute). */
+function gatherImageCandidates(section: string): string[] {
+  const out: string[] = [];
+  for (const m of section.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) {
+    out.push(m[1].trim());
+  }
+  for (const m of section.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi)) {
+    out.push(m[1].trim());
+  }
+  return out;
 }
 
 function buildResult(
@@ -68,59 +142,80 @@ export function extractBestSellersSection(text: string): string | null {
 
 /**
  * Parse Jina / page text for first best-seller card row (image + listing link).
- * Tries markdown patterns first, then HTML, then loose URL pairing.
+ * Card pages often ship two &lt;img&gt;: `/assets/fallbacks/.../show.png` (back) and
+ * `/uploads/blueprints/...jpg` (front) — we always prefer the blueprint scan.
  */
 export function parseCardTraderBestSellerFromText(fullText: string): CardTraderBestSeller | null {
   const section = extractBestSellersSection(fullText) ?? fullText.slice(0, 24_000);
   dbg("section length", section.length);
 
-  // 1) Classic: [![...](img)](card) with label between
-  const mdWrapped = section.match(
-    /\[!\[[^\]]*\]\((https:\/\/[^)]+)\)\s*([\s\S]*?)\]\((https:\/\/(?:www\.)?cardtrader\.com[^)]+)\)/i,
-  );
-  if (mdWrapped && looksLikeCardProductUrl(mdWrapped[3])) {
-    dbg("match: md wrapped image+card");
-    return buildResult(mdWrapped[1], mdWrapped[2], mdWrapped[3], "Best seller");
-  }
+  let result: CardTraderBestSeller | null = null;
 
-  // 2) Image markdown then link on next lines
-  const mdImg = section.match(/!\[[^\]]*\]\((https:\/\/[^)]+)\)/);
-  const mdLink = section.match(/(https:\/\/(?:www\.)?cardtrader\.com\/[^\s\)]*\/cards\/[^\s\)]*)/i);
-  if (mdImg?.[1] && mdLink?.[1] && looksLikeImageUrl(mdImg[1])) {
-    dbg("match: md image + card url");
-    const labelBlock = section.slice(0, Math.min(section.length, 800));
-    return buildResult(mdImg[1], labelBlock, mdLink[1], "Best seller");
-  }
-
-  // 3) HTML: img src + anchor to /cards/
-  const htmlImg = section.match(/<img[^>]+src=["'](https:\/\/[^"']+)["'][^>]*>/i);
-  const htmlLink = section.match(
-    /href=["'](https:\/\/(?:www\.)?cardtrader\.com[^"']*\/cards\/[^"']*)["']/i,
-  );
-  if (htmlImg?.[1] && htmlLink?.[1]) {
-    dbg("match: html img + link");
-    return buildResult(htmlImg[1], section.slice(0, 400), htmlLink[1], "Best seller");
-  }
-
-  // 4) Any card product URL + first plausible image URL in same section
-  const cardUrls = [
-    ...section.matchAll(/https:\/\/(?:www\.)?cardtrader\.com\/[^\s\)"']*\/cards\/[^\s\)"']*/gi),
-  ].map((x) => x[0]);
-  const imageUrls = [
-    ...section.matchAll(/https:\/\/[^\s\)"']+\.(?:png|jpe?g|webp|gif)(?:\?[^\s\)"']*)?/gi),
-  ].map((x) => x[0]);
-  if (cardUrls[0]) {
-    const img = imageUrls.find((u) => looksLikeImageUrl(u));
-    if (img) {
-      dbg("match: loose image + card url");
-      return buildResult(img, section.slice(0, 500), cardUrls[0], "Best seller");
+  // 1) Classic: [![...](img)](card) — allow relative image or card URLs
+  const mdWrapped = section.match(/\[!\[[^\]]*\]\(([^)]+)\)\s*([\s\S]*?)\]\(([^)]+)\)/i);
+  if (mdWrapped) {
+    const cardUrl = normalizeCardtraderAssetUrl(mdWrapped[3]);
+    if (looksLikeCardProductUrl(cardUrl)) {
+      dbg("match: md wrapped image+card");
+      result = buildResult(mdWrapped[1], mdWrapped[2], cardUrl, "Best seller");
     }
-    dbg("match: card url only (no image) — placeholder");
-    return buildResult("", section.slice(0, 500), cardUrls[0], "Best seller");
   }
 
-  dbg("no match");
-  return null;
+  // 2) Image markdown + card URL line
+  if (!result) {
+    const mdImg = section.match(/!\[[^\]]*\]\(([^)]+)\)/);
+    const mdLink = section.match(
+      /(https:\/\/(?:www\.)?cardtrader\.com\/[^\s\)]*\/cards\/[^\s\)]*|\/(?:en\/)?cards\/[^\s\)]*)/i,
+    );
+    if (mdImg?.[1] && mdLink?.[1]) {
+      const cardUrl = normalizeCardtraderAssetUrl(mdLink[1]);
+      if (looksLikeImageUrl(mdImg[1]) && looksLikeCardProductUrl(cardUrl)) {
+        dbg("match: md image + card url");
+        result = buildResult(mdImg[1], section.slice(0, 800), cardUrl, "Best seller");
+      }
+    }
+  }
+
+  // 3) HTML: card link (absolute or /en/cards/…) — image chosen later from all <img>
+  if (!result) {
+    const hrefAbs = section.match(
+      /href=["'](https:\/\/(?:www\.)?cardtrader\.com[^"']*\/(?:en\/)?cards\/[^"']*)["']/i,
+    );
+    const hrefRel = section.match(/href=["'](\/(?:en\/)?cards\/[^"']+)["']/i);
+    const cardUrl = normalizeCardtraderAssetUrl(hrefAbs?.[1] ?? hrefRel?.[1] ?? "");
+    if (cardUrl && looksLikeCardProductUrl(cardUrl)) {
+      dbg("match: html card href");
+      result = buildResult("", section.slice(0, 500), cardUrl, "Best seller");
+    }
+  }
+
+  // 4) First listing URL in section + loose https images (for hub lists)
+  if (!result) {
+    const cardUrls = gatherCardProductUrls(section);
+    if (cardUrls[0]) {
+      dbg("match: gather card urls");
+      result = buildResult("", section.slice(0, 500), cardUrls[0], "Best seller");
+    }
+  }
+
+  // Prefer real card scan over `/assets/fallbacks/.../show.png` (listing flipper: back then front)
+  const looseHttpsImages = [
+    ...section.matchAll(/https:\/\/[^\s\)"']+\.(?:png|jpe?g|webp|gif)(?:\?[^\s\)"']*)?/gi),
+  ].map((m) => m[0]);
+  const allImageCandidates = [...gatherImageCandidates(section), ...looseHttpsImages];
+  const bestImage = pickBestCardImageUrl(allImageCandidates);
+
+  if (result && bestImage) {
+    const cur = result.imageUrl ? normalizeCardtraderAssetUrl(result.imageUrl) : "";
+    if (!cur || scoreCardImageCandidate(bestImage) > scoreCardImageCandidate(cur)) {
+      result = { ...result, imageUrl: bestImage };
+    }
+  } else if (result && !result.imageUrl && bestImage) {
+    result = { ...result, imageUrl: bestImage };
+  }
+
+  if (!result) dbg("no match");
+  return result;
 }
 
 async function fetchJinaMarkdown(): Promise<string | null> {

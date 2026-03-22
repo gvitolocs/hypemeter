@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractBestSellersSection,
   parseCardTraderBestSellerFromText,
+  pickBestCardImageUrl,
 } from "./fetchCardTraderBestSeller";
 
 describe("fetchCardTraderBestSeller", () => {
@@ -44,5 +45,26 @@ https://www.cardtrader.com/en/pokemon/cards/only-link
     expect(r).not.toBeNull();
     expect(r!.imageUrl).toBe("");
     expect(r!.cardUrl).toContain("/cards/");
+  });
+
+  it("pickBestCardImageUrl prefers blueprint over CardTrader fallback show.png", () => {
+    const best = pickBestCardImageUrl([
+      "/assets/fallbacks/card_uploader/show.png",
+      "/uploads/blueprints/image/255640/show_gloom.jpg",
+    ]);
+    expect(best).toContain("uploads/blueprints");
+    expect(best).not.toContain("fallbacks");
+  });
+
+  it("parse: listing flipper HTML — front scan wins", () => {
+    const html = `## Best Sellers
+<a href="/en/cards/256093">
+<img src="/assets/fallbacks/card_uploader/show.png" alt="back">
+<img src="/uploads/blueprints/image/255640/show_gloom.jpg" alt="front">
+</a>`;
+    const r = parseCardTraderBestSellerFromText(html);
+    expect(r).not.toBeNull();
+    expect(r!.imageUrl).toContain("uploads/blueprints");
+    expect(r!.cardUrl).toContain("cardtrader.com");
   });
 });
