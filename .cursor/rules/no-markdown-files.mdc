@@ -1,0 +1,11 @@
+---
+description: Never create Markdown (.md) files in this repository
+alwaysApply: true
+---
+
+# No `.md` files
+
+- **Do not create** any file ending in `.md` (README, CHANGELOG, docs, ADRs, GitHub templates, etc.).
+- Put explanations in **code comments** (JSDoc / block comments in `.ts` / `.tsx`) or tell the user **in chat** — not in new files.
+- If the user asks for documentation, **refuse creating `.md`** and offer comments in source or a short reply here instead.
+- Cursor rule files use `.mdc` only; that is not a project doc file.
