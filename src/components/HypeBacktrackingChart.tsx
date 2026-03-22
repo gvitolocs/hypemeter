@@ -9,42 +9,6 @@ import { mainEventLabelForYear } from "@/lib/pokemonYearMainEvent";
 /** Same breakpoint as chart slice in BacktrackMarketSection — mobile-only chart tweaks. */
 const MOBILE_CHART_ENHANCE_MQ = "(max-width: 767px)";
 
-type YScaleParams = { mode: "full" } | { mode: "zoom"; yMin: number; yMax: number };
-
-function collectScoresForYRange(history: YearScore[], marketOverlay: MarketYearlyOverlay | null): number[] {
-  const values = history.map((h) => h.score);
-  if (!marketOverlay || history.length === 0) return values;
-  const n = history.length;
-  for (const key of ["sp500", "btc", "nintendo", "inflation"] as const) {
-    const arr = marketOverlay[key];
-    if (!arr || arr.length !== n) continue;
-    for (let i = 0; i < n; i++) {
-      const v = arr[i];
-      if (typeof v === "number" && !Number.isNaN(v)) values.push(v);
-    }
-  }
-  return values;
-}
-
-/** Tighter Y-zoom on mobile so trends read clearly (avoid a wide 0–100 feel). */
-function computeMobileYScale(values: number[]): { yMin: number; yMax: number } {
-  if (values.length === 0) return { yMin: 0, yMax: 100 };
-  const vmin = Math.min(...values);
-  const vmax = Math.max(...values);
-  const spread = vmax - vmin;
-  // Less padding than before so slopes use more of the plot height.
-  const pad = spread < 1e-9 ? 8 : Math.max(spread * 0.05, 1.5);
-  let yMin = Math.max(0, vmin - pad);
-  let yMax = Math.min(100, vmax + pad);
-  // Old logic forced ~24pt span when zoom was tight, which flattened curves; keep a small floor only.
-  if (yMax - yMin < 8) {
-    const mid = (yMin + yMax) / 2;
-    yMin = Math.max(0, mid - 5);
-    yMax = Math.min(100, mid + 5);
-  }
-  return { yMin, yMax };
-}
-
 type YearScore = {
   year: number;
   score: number;
@@ -140,36 +104,23 @@ export default function HypeBacktrackingChart({
   const isMobileChartEnhance = useMatchMedia(MOBILE_CHART_ENHANCE_MQ);
   // SVG dimensions and drawing paddings for stable scaling across breakpoints.
   const chartWidth = 940;
-  /** Taller viewBox on mobile so the same data range maps to more vertical pixels (clearer trends). */
-  const chartHeight = isMobileChartEnhance ? 420 : 340;
+  /**
+   * Mobile: taller viewBox + slightly less vertical padding → same **full 0–100** hype scale maps to
+   * more SVG pixels (larger gap between Y levels) without cropping or “zooming” to a sub-range.
+   */
+  const chartHeight = isMobileChartEnhance ? 520 : 340;
   const padX = 20;
-  const padY = 18;
+  const padY = isMobileChartEnhance ? 14 : 18;
   const safeWidth = chartWidth - padX * 2;
   const safeHeight = chartHeight - padY * 2;
 
-  const yScaleParams: YScaleParams = useMemo(() => {
-    if (!isMobileChartEnhance || history.length === 0) return { mode: "full" };
-    const { yMin, yMax } = computeMobileYScale(collectScoresForYRange(history, marketOverlay));
-    return { mode: "zoom", yMin, yMax };
-  }, [isMobileChartEnhance, history, marketOverlay]);
-
   const scoreToY = useMemo(() => {
     return (score: number) => {
-      if (yScaleParams.mode === "full") {
-        return padY + ((100 - score) / 100) * safeHeight;
-      }
-      const { yMin, yMax } = yScaleParams;
-      const span = Math.max(yMax - yMin, 1e-6);
-      return padY + ((yMax - score) / span) * safeHeight;
+      return padY + ((100 - score) / 100) * safeHeight;
     };
-  }, [padY, safeHeight, yScaleParams]);
+  }, [padY, safeHeight]);
 
-  const gridTicks = useMemo(() => {
-    if (yScaleParams.mode === "full") return [20, 40, 60, 80] as number[];
-    const { yMin, yMax } = yScaleParams;
-    const steps = 4;
-    return Array.from({ length: steps + 1 }, (_, i) => yMin + (i / steps) * (yMax - yMin));
-  }, [yScaleParams]);
+  const gridTicks = useMemo(() => [20, 40, 60, 80] as number[], []);
 
   // Precompute render coordinates from score values (0-100) to SVG space.
   const points = useMemo(() => {
@@ -307,7 +258,7 @@ export default function HypeBacktrackingChart({
       </div>
 
       <div
-        className="relative min-h-[300px] w-full overflow-hidden sm:min-h-[260px] lg:min-h-[280px]"
+        className="relative min-h-[320px] w-full overflow-hidden sm:min-h-[260px] lg:min-h-[280px]"
         onPointerEnter={() => setChartHovered(true)}
         onPointerLeave={() => setChartHovered(false)}
       >
@@ -544,11 +495,6 @@ export default function HypeBacktrackingChart({
               <span className="text-[#818cf8]/90">CPI</span>{" "}
               <span className="text-slate-600">(S&amp;P/BTC/NT norm 0–100; CPI YoY % + norm)</span>.
             </>
-          ) : null}
-          {isMobileChartEnhance && yScaleParams.mode === "zoom" ? (
-            <span className="mt-1 block text-[10px] text-slate-600 md:hidden">
-              Y-axis zoomed to this window on mobile so trends read larger (values stay 0–100).
-            </span>
           ) : null}
         </p>
         <div className="min-h-[1.75rem] shrink-0">
