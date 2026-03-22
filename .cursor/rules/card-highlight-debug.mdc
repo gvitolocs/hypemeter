@@ -1,0 +1,10 @@
+---
+description: Card highlight debug output for chat (last-card-debug.json)
+alwaysApply: true
+---
+
+# Card Highlight debug
+
+- User can run **`npm run debug:card`** (with `npm run dev` on `localhost:3000`, or `SITE_URL=https://… npm run debug:card` for production if `ENABLE_DEBUG_CARDTRADER=1`).
+- That writes **`last-card-debug.json`** at repo root (gitignored) and prints the same JSON to stdout.
+- When the user asks what the card debug says or to interpret it, **read `last-card-debug.json`** if it exists; otherwise ask them to run `npm run debug:card` and retry.
