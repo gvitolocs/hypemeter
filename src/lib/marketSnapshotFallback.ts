@@ -4,8 +4,6 @@ import type { MarketSnapshot } from "@/lib/marketSnapshot";
  * Last-known-good snapshot (aligned with [monmeter](https://monmeter.vercel.app/) delayed-style display).
  * Used only to **fill null fields** when Yahoo/Stooq time out or rate-limit (429).
  * Bump numbers occasionally or set `DISABLE_MARKET_SNAPSHOT_FALLBACK=1` to show raw nulls.
- *
- * @see docs/MARKET_DATA.md
  */
 export const MARKET_SNAPSHOT_PAGE_FALLBACK: MarketSnapshot = {
   sp500: 6506.48,
