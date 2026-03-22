@@ -118,7 +118,6 @@ const REDDIT_CARDS_URL = "https://www.reddit.com/r/pokemoncards/hot.json?limit=3
  * Same marketplace as https://www.cardtrader.com/en/highlights (linked from that page).
  */
 const CARDTRADER_POKEMON_HUB = "https://www.cardtrader.com/en/pokemon";
-const CARDTRADER_HIGHLIGHTS_URL = "https://www.cardtrader.com/en/highlights";
 
 /** Inline CSS gradients — Tailwind cannot see dynamic `from-*` / `to-*` class strings on `platform.accent`. */
 const SOCIAL_PULSE_BAR_GRADIENT_POSITIVE: Record<string, string> = {
@@ -2163,7 +2162,7 @@ export default async function Home() {
       <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 xl:max-w-7xl 2xl:max-w-[min(92rem,100%)]">
         <ScrollReveal>
           <header className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur hover-lift">
-            <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
                   Pokemon Fear & Greed Remix
@@ -2178,7 +2177,7 @@ export default async function Home() {
                 <p className="mt-2 text-xs text-slate-400">Updated: {updatedAt}</p>
               </div>
               {cardTraderBestSeller ? (
-                <div className="w-full max-w-[15rem] shrink-0 rounded-2xl border border-amber-400/30 bg-slate-950/80 p-3 lg:max-w-[13.5rem]">
+                <div className="flex h-full w-full max-w-[15rem] shrink-0 flex-col rounded-2xl border border-amber-400/30 bg-slate-950/80 p-3 lg:w-56 lg:max-w-none">
                   <p className="text-[10px] uppercase tracking-[0.14em] text-amber-300">
                     Card of the Day
                   </p>
@@ -2186,7 +2185,7 @@ export default async function Home() {
                     href={cardTraderBestSeller.cardUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 flex items-start gap-2.5 rounded-xl transition-colors hover:bg-slate-900/60"
+                    className="mt-2 flex min-h-0 flex-1 items-start gap-2.5 rounded-xl transition-colors hover:bg-slate-900/60"
                     title="Open this listing on CardTrader"
                   >
                     <Image
@@ -2194,11 +2193,11 @@ export default async function Home() {
                       alt=""
                       width={70}
                       height={98}
-                      className="h-[4.75rem] w-auto shrink-0 rounded-md bg-slate-900 object-contain object-top shadow-inner"
+                      className="h-16 w-auto shrink-0 rounded-md bg-slate-900 object-contain object-top shadow-inner"
                       unoptimized
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold leading-snug text-white line-clamp-4">
+                      <p className="text-xs font-semibold leading-snug text-white line-clamp-3">
                         {cardTraderBestSeller.name}
                       </p>
                       {cardTraderBestSeller.fromPrice ? (
@@ -2208,17 +2207,6 @@ export default async function Home() {
                       ) : null}
                     </div>
                   </a>
-                  <p className="mt-2 text-[9px] leading-snug text-slate-500">
-                    Pokémon TCG #1 best seller on CardTrader ·{" "}
-                    <a
-                      href={CARDTRADER_HIGHLIGHTS_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-cyan-400/90 underline-offset-2 hover:text-cyan-300 hover:underline"
-                    >
-                      Highlights
-                    </a>
-                  </p>
                 </div>
               ) : null}
               {pokemonOfDay ? (
@@ -2226,35 +2214,35 @@ export default async function Home() {
                   href={pokemonOfDayArticle?.link ?? "#"}
                   target={pokemonOfDayArticle ? "_blank" : undefined}
                   rel={pokemonOfDayArticle ? "noreferrer" : undefined}
-                  className={`block max-w-full rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 lg:min-w-64 lg:max-w-sm ${
+                  className={`flex h-full w-full max-w-full flex-col rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 lg:w-56 ${
                     pokemonOfDayArticle ? "hover:border-cyan-300/50" : "pointer-events-none"
                   }`}
                   title={
                     pokemonOfDayArticle
-                      ? `Read today's spotlight article from ${pokemonOfDayArticle.source}`
-                      : "No matching article found today"
+                      ? `Open spotlight article from ${pokemonOfDayArticle.source}`
+                      : "Pokemon of the day"
                   }
                 >
                   <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-300">
                     Pokemon Of The Day
                   </p>
-                  <div className="mt-2 flex items-center gap-3">
+                  <div className="mt-2 flex min-h-0 flex-1 items-start gap-3">
                     {pokemonOfDay.image ? (
                       <Image
                         src={pokemonOfDay.image}
                         alt={pokemonOfDay.name}
                         width={64}
                         height={64}
-                        className="h-16 w-16 rounded-lg bg-slate-900 object-contain p-1"
+                        className="h-16 w-16 shrink-0 rounded-lg bg-slate-900 object-contain p-1"
                         unoptimized
                       />
                     ) : (
-                      <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-slate-900 text-xs text-slate-400">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-xs text-slate-400">
                         N/A
                       </div>
                     )}
-                    <div>
-                      <p className="text-sm font-bold text-white">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold leading-snug text-white">
                         #{pokemonOfDay.id} {pokemonOfDay.name}
                       </p>
                       <div className="mt-1 flex flex-wrap gap-1">
@@ -2267,15 +2255,6 @@ export default async function Home() {
                           </span>
                         ))}
                       </div>
-                      {pokemonOfDayArticle ? (
-                        <p className="mt-1 text-[10px] text-cyan-300/90">
-                          Read today&apos;s spotlight article →
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-[10px] text-slate-500">
-                          Spotlight article unavailable for today.
-                        </p>
-                      )}
                     </div>
                   </div>
                 </a>
