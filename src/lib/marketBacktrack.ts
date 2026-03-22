@@ -73,20 +73,8 @@ async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<Year
   }
 }
 
-/** Nintendo ADR: merge several Stooq symbols so we get variance (single feed is often sparse → flat line). */
-async function fetchStooqNintendoYearlyMerged(): Promise<YearlyCloseMap> {
-  const symbols = ["ntdoy.us", "ntdoy", "ntdoy.de"] as const;
-  const maps = await Promise.all(symbols.map((s) => fetchStooqYearlyClosesBySymbol(s)));
-  const merged = new Map<number, number>();
-  for (const m of maps) {
-    for (const [y, c] of m) {
-      if (!merged.has(y)) merged.set(y, c);
-    }
-  }
-  return merged;
-}
-
-async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
+/** Exported for tests — Yahoo monthly closes, last bar per calendar year. */
+export async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
   const map: YearlyCloseMap = new Map();
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1mo&range=max`;
@@ -98,24 +86,32 @@ async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
     if (!res.ok) return map;
     const json = (await res.json()) as {
       chart?: {
+        error?: { description?: string };
         result?: Array<{
           timestamp?: number[];
-          indicators?: { quote?: Array<{ close?: Array<number | null> }> };
+          indicators?: {
+            quote?: Array<{ close?: Array<number | null> }>;
+            adjclose?: Array<{ adjclose?: Array<number | null> }>;
+          };
         }>;
       };
     };
+    if (json.chart?.error) return map;
     const result = json.chart?.result?.[0];
     const ts = result?.timestamp;
-    const closes = result?.indicators?.quote?.[0]?.close;
-    if (!ts?.length || !closes?.length) return map;
+    const quote = result?.indicators?.quote?.[0];
+    const closeArr = quote?.close;
+    const adjArr = result?.indicators?.adjclose?.[0]?.adjclose;
+    if (!ts?.length) return map;
 
     const byYear = new Map<number, { t: number; c: number }>();
     for (let i = 0; i < ts.length; i++) {
-      const c = closes[i];
-      if (c == null || Number.isNaN(Number(c))) continue;
+      const raw = closeArr?.[i] ?? adjArr?.[i] ?? null;
+      if (raw == null || Number.isNaN(Number(raw))) continue;
+      const c = Number(raw);
       const y = new Date(ts[i] * 1000).getFullYear();
       const prev = byYear.get(y);
-      if (!prev || ts[i] > prev.t) byYear.set(y, { t: ts[i], c: Number(c) });
+      if (!prev || ts[i] > prev.t) byYear.set(y, { t: ts[i], c });
     }
     for (const [y, v] of byYear) map.set(y, v.c);
   } catch {
@@ -175,27 +171,31 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
   if (years.length === 0) {
     return { sp500: [], btc: [], nintendo: [] };
   }
-  const [spY, btcY, ntY, spS, btcS, ntS] = await Promise.all([
+  const [spY, btcY, ntY, spS, btcS] = await Promise.all([
     fetchYahooYearlyCloses("^GSPC"),
     fetchYahooYearlyCloses("BTC-USD"),
     fetchYahooYearlyCloses("NTDOY"),
     fetchStooqYearlyClosesBySymbol("^spx"),
     fetchStooqYearlyClosesBySymbol("btcusd"),
-    fetchStooqNintendoYearlyMerged(),
   ]);
   const spMap = mergeYearlyMaps(spY, spS);
   const btcMap = mergeYearlyMaps(btcY, btcS);
-  const ntMap = mergeYearlyMaps(ntY, ntS);
+  /** NTDOY only from Yahoo — Stooq OTC symbols (ntdoy.us, …) often return no rows. */
+  const ntMap = mergeYearlyMaps(ntY, new Map());
   const spAligned = alignYearSeries(years, spMap);
   const btcAligned = alignYearSeries(years, btcMap);
   let ntAligned = alignYearSeries(years, ntMap);
   /**
-   * NTDOY ADR often comes back as one price forward-filled → min=max → norm ~49 forever.
-   * Yahoo Tokyo listing (7974.T) has full history; use it only for *shape* on this chart (still labeled NT).
+   * NTDOY ADR can be empty/flat after Yahoo (blocked IP, sparse OTC). Tokyo listings restore shape.
+   * Use one source at a time (no mixing USD ADR with JPY in the same raw series).
    */
   if (!seriesHasVariance(ntAligned)) {
     const jpMap = await fetchYahooYearlyCloses("7974.T");
     ntAligned = alignYearSeries(years, jpMap);
+  }
+  if (!seriesHasVariance(ntAligned)) {
+    const stooqTokyo = await fetchStooqYearlyClosesBySymbol("7974.jp");
+    ntAligned = alignYearSeries(years, stooqTokyo);
   }
   return {
     sp500: normalizeTo100(spAligned, { degenerateBias: 0 }),

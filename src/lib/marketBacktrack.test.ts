@@ -1,10 +1,45 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   alignYearSeries,
+  fetchYahooYearlyCloses,
   normalizeTo100,
   parseStooqDailyHistoryToYearlyLastClose,
   seriesHasVariance,
 } from "@/lib/marketBacktrack";
+
+describe("fetchYahooYearlyCloses", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("uses adjclose when quote.close is null (Yahoo v8)", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            chart: {
+              result: [
+                {
+                  timestamp: [1577836800, 1609459200, 1640995200],
+                  indicators: {
+                    quote: [{ close: [null, null, null] }],
+                    adjclose: [{ adjclose: [100, 110, 120] }],
+                  },
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as typeof fetch;
+
+    const map = await fetchYahooYearlyCloses("TEST");
+    expect(map.size).toBeGreaterThanOrEqual(1);
+    expect(Math.min(...map.values())).toBeLessThan(Math.max(...map.values()));
+  });
+});
 
 describe("marketBacktrack", () => {
   it("alignYearSeries uses placeholder when no Yahoo data (still drawable overlays)", () => {
