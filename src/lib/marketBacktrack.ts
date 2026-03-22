@@ -2,6 +2,8 @@
  * Yearly Yahoo Finance monthly closes → normalized 0–100 series for the hype chart overlay.
  */
 
+import staticCpiYoYByYear from "@/data/staticCpiYoYByYear.json";
+
 const YAHOO_CHART_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
@@ -21,16 +23,6 @@ type YearlyCloseMap = Map<number, number>;
 
 const STOOQ_HIST_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-
-/** Avoid hanging SSR if Yahoo / Stooq / FRED never answer (Vercel would 504 otherwise). */
-const EXTERNAL_FETCH_TIMEOUT_MS = 12_000;
-
-function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return fetch(input, {
-    ...init,
-    signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
-  });
-}
 
 /** Last trading close per calendar year from Stooq daily CSV (header must include Date + Close). */
 export function parseStooqDailyHistoryToYearlyLastClose(csv: string): YearlyCloseMap {
@@ -134,32 +126,38 @@ export function buildCpiYoYPercentByYearFromMonthlyRows(monthly: CpiMonthRow[]):
   return map;
 }
 
+function loadStaticCpiYoYMap(): Map<number, number> {
+  const m = new Map<number, number>();
+  for (const [k, v] of Object.entries(staticCpiYoYByYear as Record<string, number>)) {
+    m.set(Number(k), v);
+  }
+  return m;
+}
+
 /**
- * Official FRED API (JSON) — preferred when `FRED_API_KEY` is set (free key:
- * https://fred.stlouisfed.org/docs/api/api_key.html ). More reliable than graph CSV from some hosts.
+ * Live YoY for the **current calendar year** only — small FRED API payload (`observation_start` = Jan two years ago).
  * @see https://fred.stlouisfed.org/docs/api/fred/series_observations.html
  */
-async function fetchFredCpiYoYFromApi(): Promise<Map<number, number>> {
+async function fetchFredCurrentYearYoYFromApi(cy: number): Promise<number | null> {
   const key = process.env.FRED_API_KEY?.trim();
-  if (!key) return new Map();
+  if (!key) return null;
   try {
     const url = new URL("https://api.stlouisfed.org/fred/series/observations");
     url.searchParams.set("series_id", "CPIAUCSL");
     url.searchParams.set("api_key", key);
     url.searchParams.set("file_type", "json");
-    url.searchParams.set("observation_start", "1947-01-01");
+    url.searchParams.set("observation_start", `${cy - 2}-01-01`);
     url.searchParams.set("sort_order", "asc");
-    url.searchParams.set("limit", "10000");
-    const res = await fetchWithTimeout(url.toString(), {
-      next: { revalidate: 86400 },
+    url.searchParams.set("limit", "120");
+    const res = await fetch(url.toString(), {
+      next: { revalidate: 3600 },
     });
-    if (!res.ok) return new Map();
+    if (!res.ok) return null;
     const json = (await res.json()) as {
       observations?: Array<{ date?: string; value?: string }>;
     };
-    const obs = json.observations ?? [];
     const monthly: CpiMonthRow[] = [];
-    for (const o of obs) {
+    for (const o of json.observations ?? []) {
       const dateStr = o.date?.trim();
       const rawVal = o.value?.trim();
       if (!dateStr || !rawVal || rawVal === ".") continue;
@@ -175,33 +173,39 @@ async function fetchFredCpiYoYFromApi(): Promise<Map<number, number>> {
       });
     }
     monthly.sort((a, b) => a.t - b.t);
-    return buildCpiYoYPercentByYearFromMonthlyRows(monthly);
+    const map = buildCpiYoYPercentByYearFromMonthlyRows(monthly);
+    return map.get(cy) ?? null;
   } catch {
-    return new Map();
+    return null;
   }
 }
 
-/** FRED CPIAUCSL — graph CSV fallback (same series as https://fred.stlouisfed.org/series/CPIAUCSL ). */
-async function fetchFredCpiYoYFromGraphCsv(): Promise<Map<number, number>> {
+/** Fallback: full graph CSV (only `cy` YoY is read — rest comes from static JSON). */
+async function fetchFredCurrentYearYoYFromGraphCsv(cy: number): Promise<number | null> {
   try {
-    const url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL";
-    const res = await fetchWithTimeout(url, {
-      next: { revalidate: 86400 },
+    const res = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL", {
+      next: { revalidate: 3600 },
       headers: { "user-agent": STOOQ_HIST_UA },
     });
-    if (!res.ok) return new Map();
-    const text = await res.text();
-    const rows = parseFredCpiCsvToMonthlyRows(text);
-    return buildCpiYoYPercentByYearFromMonthlyRows(rows);
+    if (!res.ok) return null;
+    const rows = parseFredCpiCsvToMonthlyRows(await res.text());
+    const map = buildCpiYoYPercentByYearFromMonthlyRows(rows);
+    return map.get(cy) ?? null;
   } catch {
-    return new Map();
+    return null;
   }
 }
 
+/** Past years from `staticCpiYoYByYear.json`; current year from FRED (API first, then CSV). */
 async function fetchFredCpiYoYByYear(): Promise<Map<number, number>> {
-  const fromApi = await fetchFredCpiYoYFromApi();
-  if (fromApi.size > 0) return fromApi;
-  return fetchFredCpiYoYFromGraphCsv();
+  const base = loadStaticCpiYoYMap();
+  const cy = new Date().getUTCFullYear();
+  let yoy = await fetchFredCurrentYearYoYFromApi(cy);
+  if (yoy === null) {
+    yoy = await fetchFredCurrentYearYoYFromGraphCsv(cy);
+  }
+  if (yoy !== null) base.set(cy, yoy);
+  return base;
 }
 
 async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<YearlyCloseMap> {
@@ -209,7 +213,7 @@ async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<Year
     const d1 = "20050101";
     const d2 = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(stooqSymbol)}&d1=${d1}&d2=${d2}&i=d`;
-    const res = await fetchWithTimeout(url, {
+    const res = await fetch(url, {
       next: { revalidate: 86400 },
       headers: { "user-agent": STOOQ_HIST_UA },
     });
@@ -226,7 +230,7 @@ export async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyClos
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1mo&range=max`;
     // Monthly historical series — not intraday; cache aggressively (aligns with “delayed” quote pages).
-    const res = await fetchWithTimeout(url, {
+    const res = await fetch(url, {
       next: { revalidate: 86400 },
       headers: { "user-agent": YAHOO_CHART_UA },
     });

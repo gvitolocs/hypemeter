@@ -1,9 +1,8 @@
-# FRED API key (optional)
+# FRED / CPI inflation data
 
-CPI inflation on the hype chart uses [CPIAUCSL](https://fred.stlouisfed.org/series/CPIAUCSL).
+Past years use **`src/data/staticCpiYoYByYear.json`** (regenerate yearly: `node scripts/generate-static-cpi-yojson.mjs`).
 
-1. Request a **free** API key: [FRED API key](https://fred.stlouisfed.org/docs/api/api_key.html).
-2. In Vercel (or locally), set **`FRED_API_KEY`**.
-3. Redeploy.
+Only the **current calendar year** is fetched live:
 
-If unset, the app falls back to the public graph CSV (`fredgraph.csv`). The official [series observations API](https://fred.stlouisfed.org/docs/api/fred/series_observations.html) is more reliable on some hosts.
+- **With** [`FRED_API_KEY`](https://fred.stlouisfed.org/docs/api/api_key.html): [series/observations](https://fred.stlouisfed.org/docs/api/fred/series_observations.html) with a **narrow** `observation_start` (~2 years of monthly rows).
+- **Without** a key: one request to the public [`fredgraph.csv`](https://fred.stlouisfed.org/series/CPIAUCSL) — only the current year’s YoY is read from the parsed series (the rest still comes from the static JSON).
