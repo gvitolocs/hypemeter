@@ -1504,6 +1504,9 @@ async function fetchPokemonNameCatalog() {
 /** Minimum weighted score to count a name as a real mention (title+summary only). */
 const FEED_POKEMON_MENTION_FLOOR = 3;
 
+/** Min aggregate weighted score across headlines to prefer “news Pokémon” over the daily hash. */
+const NEWS_POD_MIN_AGGREGATE = 8;
+
 function rankPokemonMatchesFromSources(
   sources: Array<{ text: string; weight: number }>,
   names: string[],
@@ -1657,12 +1660,44 @@ function calendarDateIsoInTimeZone(timeZone: string): string {
 }
 
 /**
- * One species per calendar day: hash(date + stable Pokédex order). RSS does not change the featured Pokémon.
+ * Best Pokémon slug from current headlines (aggregate weighted mentions). Used when buzz is strong enough
+ * so the featured species tracks the news, not only the calendar hash.
+ */
+function pickBestPokemonSlugFromNews(items: NewsItem[], catalog: string[]): string | null {
+  if (items.length === 0) return null;
+  const aggregate = new Map<string, number>();
+  for (const item of items) {
+    const ranked = rankPokemonMatchesFromSources(
+      [{ text: item.title, weight: 2.5 }, { text: item.summary, weight: 1.6 }],
+      catalog,
+    );
+    for (const { name, score } of ranked) {
+      if (score < FEED_POKEMON_MENTION_FLOOR) continue;
+      aggregate.set(name, (aggregate.get(name) ?? 0) + score);
+    }
+  }
+  let bestSlug: string | null = null;
+  let bestTotal = 0;
+  for (const [name, total] of aggregate) {
+    if (total < NEWS_POD_MIN_AGGREGATE) continue;
+    if (total > bestTotal) {
+      bestTotal = total;
+      bestSlug = name;
+    } else if (total === bestTotal && bestSlug !== null && name.localeCompare(bestSlug) < 0) {
+      bestSlug = name;
+    }
+  }
+  return bestSlug;
+}
+
+/**
+ * One species per calendar day: hash(date + stable Pokédex order). Salt bumps (v2) reshuffle the calendar
+ * without changing the algorithm.
  */
 function pickDailyPokemonSlugFromCatalog(catalog: string[], dateIso: string): string | null {
   if (catalog.length === 0) return null;
   const sorted = [...catalog].sort((a, b) => a.localeCompare(b, "en"));
-  const idx = hashStringToRange(`${dateIso}|pokemon-of-day`, 0, sorted.length - 1);
+  const idx = hashStringToRange(`${dateIso}|pokemon-of-day-v2`, 0, sorted.length - 1);
   return sorted[idx] ?? null;
 }
 
@@ -1714,16 +1749,23 @@ function pickSpotlightArticleForPokemon(
 }
 
 async function resolvePokemonOfDay(
-  _items: NewsItem[],
+  items: NewsItem[],
   catalog: string[],
 ): Promise<{ pokemon: PokemonOfDay | null; winnerSlug: string | null }> {
   const dateIso = calendarDateIsoInTimeZone("Europe/Rome");
+
+  const newsSlug = pickBestPokemonSlugFromNews(items, catalog);
+  if (newsSlug) {
+    const pokemon = await fetchPokemonByIdentifier(newsSlug);
+    if (pokemon) return { pokemon, winnerSlug: newsSlug };
+  }
+
   const winnerSlug = pickDailyPokemonSlugFromCatalog(catalog, dateIso);
   if (winnerSlug) {
     const pokemon = await fetchPokemonByIdentifier(winnerSlug);
     if (pokemon) return { pokemon, winnerSlug };
   }
-  const fallbackId = hashStringToRange(`${dateIso}|pod-fallback`, 1, 1025);
+  const fallbackId = hashStringToRange(`${dateIso}|pod-fallback-v2`, 1, 1025);
   const pokemon = await fetchPokemonByIdentifier(fallbackId);
   return { pokemon, winnerSlug: null };
 }
