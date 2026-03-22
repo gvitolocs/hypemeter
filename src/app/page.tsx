@@ -1475,9 +1475,15 @@ function scoreArticleRelevance(item: NewsItem) {
   if (/(guide|beginner|best game|opinion|reddit|thread|question)/i.test(item.title)) {
     score -= 4;
   }
-  score += Math.max(0, 10 - hoursAgo(item.pubDate) / 4);
+  // Fresher headlines win when everything else is close (stops "today" linking to 2–3 day old posts).
+  score += Math.max(0, 18 - hoursAgo(item.pubDate) / 2.5);
   if (title.includes("pokémon") || title.includes("pokemon")) score += 1;
   return score;
+}
+
+function pubDateMs(item: NewsItem) {
+  const t = new Date(item.pubDate).getTime();
+  return Number.isNaN(t) ? 0 : t;
 }
 
 function normalizePokemonToken(value: string) {
@@ -1595,7 +1601,12 @@ function pickArticleOfDay(items: NewsItem[], pokemonCatalog: string[]): PokemonO
       const mentionBoost = mentions.length > 0 ? 8 + Math.min(8, mentions.length * 3) : 0;
       return { item, score: scoreArticleRelevance(item) + mentionBoost, mentions };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      const tb = pubDateMs(b.item);
+      const ta = pubDateMs(a.item);
+      if (tb !== ta) return tb - ta;
+      return b.score - a.score;
+    });
 
   const best = ranked[0];
   const bestItem = best?.item;
@@ -1628,10 +1639,13 @@ function hashStringToRange(input: string, min: number, max: number) {
  */
 function computeFeedWidePokemonWinner(items: NewsItem[], catalog: string[]): string | null {
   if (items.length === 0 || catalog.length === 0) return null;
-  const articleCount = new Map<string, number>();
+  /** Weighted presence so older headlines don't drive "today" as much as fresh ones. */
+  const articleWeight = new Map<string, number>();
   const weightedTotal = new Map<string, number>();
 
   for (const item of items) {
+    const hours = hoursAgo(item.pubDate);
+    const recency = Math.max(0.22, Math.exp(-hours / 96));
     const ranked = rankPokemonMatchesFromSources(
       [
         { text: item.title, weight: 3 },
@@ -1642,19 +1656,22 @@ function computeFeedWidePokemonWinner(items: NewsItem[], catalog: string[]): str
     const seenInArticle = new Set<string>();
     for (const entry of ranked) {
       if (entry.score < FEED_POKEMON_MENTION_FLOOR) continue;
-      weightedTotal.set(entry.name, (weightedTotal.get(entry.name) ?? 0) + entry.score);
+      weightedTotal.set(
+        entry.name,
+        (weightedTotal.get(entry.name) ?? 0) + entry.score * recency,
+      );
       if (!seenInArticle.has(entry.name)) {
         seenInArticle.add(entry.name);
-        articleCount.set(entry.name, (articleCount.get(entry.name) ?? 0) + 1);
+        articleWeight.set(entry.name, (articleWeight.get(entry.name) ?? 0) + recency);
       }
     }
   }
 
-  const names = [...articleCount.keys()];
+  const names = [...articleWeight.keys()];
   if (names.length === 0) return null;
   names.sort((a, b) => {
-    const ca = articleCount.get(a) ?? 0;
-    const cb = articleCount.get(b) ?? 0;
+    const ca = articleWeight.get(a) ?? 0;
+    const cb = articleWeight.get(b) ?? 0;
     if (cb !== ca) return cb - ca;
     return (weightedTotal.get(b) ?? 0) - (weightedTotal.get(a) ?? 0);
   });
@@ -1682,7 +1699,12 @@ function pickSpotlightArticleForPokemon(
       hit: articleMentionsPokemonSlug(item, winnerSlug, catalog),
     }))
     .filter((row) => row.hit)
-    .sort((a, b) => b.rel - a.rel);
+    .sort((a, b) => {
+      const tb = pubDateMs(b.item);
+      const ta = pubDateMs(a.item);
+      if (tb !== ta) return tb - ta;
+      return b.rel - a.rel;
+    });
   const best = ranked[0]?.item;
   if (!best) return null;
   return {
