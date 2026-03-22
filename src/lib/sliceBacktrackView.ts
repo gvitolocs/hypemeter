@@ -27,6 +27,8 @@ export function sliceBacktrackView(
       sp500: slice(marketOverlay.sp500),
       btc: slice(marketOverlay.btc),
       nintendo: slice(marketOverlay.nintendo),
+      inflationYoY: slice(marketOverlay.inflationYoY),
+      inflation: slice(marketOverlay.inflation),
     },
     events: events.filter((e) => visibleYears.has(e.year)),
   };

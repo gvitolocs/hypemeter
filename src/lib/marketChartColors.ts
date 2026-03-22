@@ -15,4 +15,9 @@ export const MARKET_CHART = {
     hex: "#fb7185",
     rgba: "rgba(251, 113, 133, 0.85)",
   },
+  /** US CPI inflation (annual % YoY) — thin line on chart. */
+  inflation: {
+    hex: "#818cf8",
+    rgba: "rgba(129, 140, 248, 0.85)",
+  },
 } as const;

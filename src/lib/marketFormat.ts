@@ -36,10 +36,12 @@ export function growthPctColorClass(
   if (value === null || raw === undefined || Number.isNaN(n)) {
     if (series === "btc") return "text-[#fbbf24]/90";
     if (series === "nintendo") return "text-[#fb7185]/90";
+    if (series === "inflation") return "text-[#818cf8]/90";
     return "text-[#34d399]/90";
   }
   if (n === 0) return "text-slate-300";
   if (series === "btc") return "text-[#fbbf24]";
   if (series === "nintendo") return "text-[#fb7185]";
+  if (series === "inflation") return "text-[#818cf8]";
   return "text-[#34d399]";
 }

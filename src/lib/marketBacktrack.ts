@@ -5,12 +5,16 @@
 const YAHOO_CHART_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-export type MarketHighlightKey = "sp500" | "btc" | "nintendo";
+export type MarketHighlightKey = "sp500" | "btc" | "nintendo" | "inflation";
 
 export type MarketYearlyOverlay = {
   sp500: number[];
   btc: number[];
   nintendo: number[];
+  /** US CPI annual inflation % (World Bank FP.CPI.TOTL.ZG), aligned to chart years. */
+  inflationYoY: number[];
+  /** Same inflation series min–max normalized to 0–100 (thin line on chart). */
+  inflation: number[];
 };
 
 type YearlyCloseMap = Map<number, number>;
@@ -55,6 +59,34 @@ function mergeYearlyMaps(yahoo: YearlyCloseMap, stooq: YearlyCloseMap): YearlyCl
   const out = new Map<number, number>(stooq);
   for (const [y, c] of yahoo) out.set(y, c);
   return out;
+}
+
+/** World Bank: US annual CPI inflation % (consumer prices, YoY). */
+async function fetchWorldBankUsInflationYoYByYear(): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  try {
+    const url =
+      "https://api.worldbank.org/v2/country/USA/indicator/FP.CPI.TOTL.ZG?format=json&per_page=500&date=1960:2040";
+    const res = await fetch(url, {
+      next: { revalidate: 86400 },
+      headers: { "user-agent": STOOQ_HIST_UA },
+    });
+    if (!res.ok) return map;
+    const json = (await res.json()) as unknown;
+    if (!Array.isArray(json) || json.length < 2) return map;
+    const rows = json[1] as Array<{ date?: string; value?: number | null }>;
+    for (const row of rows) {
+      const raw = row.date;
+      const y = raw ? parseInt(String(raw).slice(0, 4), 10) : NaN;
+      const v = row.value;
+      if (!Number.isNaN(y) && v != null && typeof v === "number" && !Number.isNaN(v)) {
+        map.set(y, v);
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return map;
 }
 
 async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<YearlyCloseMap> {
@@ -169,14 +201,15 @@ export function normalizeTo100(values: number[], options?: NormalizeTo100Options
 /** Parallel fetch + per-asset normalization (same Y scale as hype 0–100). */
 export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketYearlyOverlay> {
   if (years.length === 0) {
-    return { sp500: [], btc: [], nintendo: [] };
+    return { sp500: [], btc: [], nintendo: [], inflationYoY: [], inflation: [] };
   }
-  const [spY, btcY, ntY, spS, btcS] = await Promise.all([
+  const [spY, btcY, ntY, spS, btcS, cpiYoYMap] = await Promise.all([
     fetchYahooYearlyCloses("^GSPC"),
     fetchYahooYearlyCloses("BTC-USD"),
     fetchYahooYearlyCloses("NTDOY"),
     fetchStooqYearlyClosesBySymbol("^spx"),
     fetchStooqYearlyClosesBySymbol("btcusd"),
+    fetchWorldBankUsInflationYoYByYear(),
   ]);
   const spMap = mergeYearlyMaps(spY, spS);
   const btcMap = mergeYearlyMaps(btcY, btcS);
@@ -197,9 +230,12 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     const stooqTokyo = await fetchStooqYearlyClosesBySymbol("7974.jp");
     ntAligned = alignYearSeries(years, stooqTokyo);
   }
+  const inflationYoY = alignYearSeries(years, cpiYoYMap);
   return {
     sp500: normalizeTo100(spAligned, { degenerateBias: 0 }),
     btc: normalizeTo100(btcAligned, { degenerateBias: 0.55 }),
     nintendo: normalizeTo100(ntAligned, { degenerateBias: -0.55 }),
+    inflationYoY,
+    inflation: normalizeTo100(inflationYoY, { degenerateBias: 0.25 }),
   };
 }

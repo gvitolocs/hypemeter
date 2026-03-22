@@ -14,7 +14,7 @@ function collectScoresForYRange(history: YearScore[], marketOverlay: MarketYearl
   const values = history.map((h) => h.score);
   if (!marketOverlay || history.length === 0) return values;
   const n = history.length;
-  for (const key of ["sp500", "btc", "nintendo"] as const) {
+  for (const key of ["sp500", "btc", "nintendo", "inflation"] as const) {
     const arr = marketOverlay[key];
     if (!arr || arr.length !== n) continue;
     for (let i = 0; i < n; i++) {
@@ -120,6 +120,7 @@ const MARKET_COLORS = {
   sp500: MARKET_CHART.sp500.rgba,
   btc: MARKET_CHART.btc.rgba,
   nintendo: MARKET_CHART.nintendo.rgba,
+  inflation: MARKET_CHART.inflation.rgba,
 } as const;
 
 /** Solid fills for tooltip text (match thin lines). */
@@ -127,13 +128,18 @@ const MARKET_TOOLTIP_FILLS: Record<MarketHighlightKey, string> = {
   sp500: MARKET_CHART.sp500.hex,
   btc: MARKET_CHART.btc.hex,
   nintendo: MARKET_CHART.nintendo.hex,
+  inflation: MARKET_CHART.inflation.hex,
 };
 
 const MARKET_SHORT_LABEL: Record<MarketHighlightKey, string> = {
   sp500: "S&P",
   btc: "BTC",
   nintendo: "NT",
+  inflation: "CPI",
 };
+
+/** Tooltip first row: normalized overlays (not CPI — shown as YoY % on second row). */
+const NORM_TOOLTIP_KEYS: MarketHighlightKey[] = ["sp500", "btc", "nintendo"];
 
 export default function HypeBacktrackingChart({
   history,
@@ -202,6 +208,7 @@ export default function HypeBacktrackingChart({
       { key: "sp500", values: marketOverlay.sp500, color: MARKET_COLORS.sp500 },
       { key: "btc", values: marketOverlay.btc, color: MARKET_COLORS.btc },
       { key: "nintendo", values: marketOverlay.nintendo, color: MARKET_COLORS.nintendo },
+      { key: "inflation", values: marketOverlay.inflation, color: MARKET_COLORS.inflation },
     ];
     return keys
       .map(({ key, values, color }) => {
@@ -252,16 +259,29 @@ export default function HypeBacktrackingChart({
     const sp = marketOverlay.sp500[activeIndex];
     const btc = marketOverlay.btc[activeIndex];
     const nt = marketOverlay.nintendo[activeIndex];
+    const infN = marketOverlay.inflation[activeIndex];
+    const infY = marketOverlay.inflationYoY[activeIndex];
     if (sp === undefined || btc === undefined || nt === undefined) return null;
     if ([sp, btc, nt].some((v) => Number.isNaN(v))) return null;
-    return { sp, btc, nt };
+    const hasCpi =
+      infN !== undefined &&
+      infY !== undefined &&
+      !Number.isNaN(infN) &&
+      !Number.isNaN(infY);
+    return { sp, btc, nt, infN, infY, hasCpi };
   }, [marketOverlay, activeIndex]);
 
   const marketTooltipOrder = useMemo((): MarketHighlightKey[] => {
-    const all: MarketHighlightKey[] = ["sp500", "btc", "nintendo"];
+    const all: MarketHighlightKey[] = ["sp500", "btc", "nintendo", "inflation"];
     if (!highlightSeries) return all;
     return [highlightSeries, ...all.filter((k) => k !== highlightSeries)];
   }, [highlightSeries]);
+
+  /** S&P / BTC / NT row — same ordering as `marketTooltipOrder`, minus CPI. */
+  const normTooltipOrder = useMemo((): MarketHighlightKey[] => {
+    const filtered = marketTooltipOrder.filter((k) => NORM_TOOLTIP_KEYS.includes(k));
+    return filtered.length > 0 ? filtered : [...NORM_TOOLTIP_KEYS];
+  }, [marketTooltipOrder]);
 
   return (
     <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] rounded-2xl border border-white/10 bg-slate-950 px-3 pt-3 pb-2">
@@ -416,13 +436,20 @@ export default function HypeBacktrackingChart({
               strokeDasharray="3 5"
             />
             <g
-              transform={`translate(${Math.min(active.x + 12, chartWidth - (marketAtIndex ? 218 : 175))}, ${Math.max(active.y - (marketAtIndex ? 76 : 52), 8)})`}
+              transform={`translate(${Math.min(
+                active.x + 12,
+                chartWidth -
+                  (marketAtIndex?.hasCpi ? 248 : marketAtIndex ? 206 : 165),
+              )}, ${Math.max(
+                active.y - (marketAtIndex?.hasCpi ? 86 : marketAtIndex ? 76 : 52),
+                8,
+              )})`}
             >
               <rect
                 x="0"
                 y="0"
-                width={marketAtIndex ? 206 : 165}
-                height={marketAtIndex ? 68 : 44}
+                width={marketAtIndex?.hasCpi ? 248 : marketAtIndex ? 206 : 165}
+                height={marketAtIndex?.hasCpi ? 86 : marketAtIndex ? 68 : 44}
                 rx="8"
                 fill="rgba(15, 23, 42, 0.95)"
                 stroke="rgba(148, 163, 184, 0.4)"
@@ -431,37 +458,60 @@ export default function HypeBacktrackingChart({
                 {active.year} • Hype {active.score}
               </text>
               {marketAtIndex ? (
-                <text x="10" y="34" fontSize="10">
-                  {marketTooltipOrder.map((key, i) => {
-                    const v =
-                      key === "sp500"
-                        ? marketAtIndex.sp
-                        : key === "btc"
-                          ? marketAtIndex.btc
-                          : marketAtIndex.nt;
-                    return (
-                      <tspan key={key}>
-                        {i > 0 ? (
-                          <tspan fill="#64748b" fontWeight="400">
-                            {" · "}
+                <>
+                  <text x="10" y="34" fontSize="10">
+                    {normTooltipOrder.map((key, i) => {
+                      const v =
+                        key === "sp500"
+                          ? marketAtIndex.sp
+                          : key === "btc"
+                            ? marketAtIndex.btc
+                            : marketAtIndex.nt;
+                      return (
+                        <tspan key={key}>
+                          {i > 0 ? (
+                            <tspan fill="#64748b" fontWeight="400">
+                              {" · "}
+                            </tspan>
+                          ) : null}
+                          <tspan
+                            fill={MARKET_TOOLTIP_FILLS[key]}
+                            fontWeight={highlightSeries === key ? 700 : 600}
+                          >
+                            {MARKET_SHORT_LABEL[key]} {Math.round(v)}
                           </tspan>
-                        ) : null}
-                        <tspan
-                          fill={MARKET_TOOLTIP_FILLS[key]}
-                          fontWeight={highlightSeries === key ? 700 : 600}
-                        >
-                          {MARKET_SHORT_LABEL[key]} {Math.round(v)}
                         </tspan>
+                      );
+                    })}
+                    <tspan fill="#64748b" fontSize="9" fontWeight="400">
+                      {" "}
+                      (norm)
+                    </tspan>
+                  </text>
+                  {marketAtIndex.hasCpi ? (
+                    <text x="10" y="52" fontSize="10">
+                      <tspan
+                        fill={MARKET_TOOLTIP_FILLS.inflation}
+                        fontWeight={highlightSeries === "inflation" ? 700 : 600}
+                      >
+                        CPI {marketAtIndex.infY.toFixed(1)}% YoY
                       </tspan>
-                    );
-                  })}
-                  <tspan fill="#64748b" fontSize="9" fontWeight="400">
-                    {" "}
-                    (norm)
-                  </tspan>
-                </text>
+                      <tspan fill="#64748b" fontSize="9" fontWeight="400">
+                        {" "}
+                        (US)
+                      </tspan>
+                    </text>
+                  ) : null}
+                </>
               ) : null}
-              <text x="10" y={marketAtIndex ? 52 : 32} fill="#94a3b8" fontSize="10">
+              <text
+                x="10"
+                y={
+                  marketAtIndex?.hasCpi ? 72 : marketAtIndex ? 52 : 32
+                }
+                fill="#94a3b8"
+                fontSize="10"
+              >
                 {activeIsHypePeak ? "Peak · " : ""}Zone: {zoneForScore(active.score)}
               </text>
             </g>
@@ -486,7 +536,9 @@ export default function HypeBacktrackingChart({
               Thin lines:{" "}
               <span className="text-[#34d399]/90">S&amp;P</span> /{" "}
               <span className="text-[#fbbf24]/90">BTC</span> /{" "}
-              <span className="text-[#fb7185]/90">NTDOY</span> (0–100 norm).
+              <span className="text-[#fb7185]/90">NTDOY</span> /{" "}
+              <span className="text-[#818cf8]/90">CPI</span>{" "}
+              <span className="text-slate-600">(S&amp;P/BTC/NT norm 0–100; CPI YoY % + norm)</span>.
             </>
           ) : null}
           {isMobileChartEnhance && yScaleParams.mode === "zoom" ? (

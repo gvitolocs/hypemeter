@@ -60,6 +60,11 @@ describe("fetchMarketYearlyOverlay (mocked Yahoo v8 chart API)", () => {
     const btcCloses = years.map((_, i) => 100 + i * 10);
     const ntdyCloses = years.map((_, i) => 10 + i * 0.2);
 
+    const wbInflation = years.map((y) => ({
+      date: String(y),
+      value: 2 + (y % 7) * 0.15,
+    }));
+
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("%5EGSPC") && url.includes("interval=1mo")) {
@@ -71,6 +76,9 @@ describe("fetchMarketYearlyOverlay (mocked Yahoo v8 chart API)", () => {
       if (url.includes("NTDOY") && url.includes("interval=1mo")) {
         return jsonRes(yahooV8MonthlyChart(ntdyCloses, 2005));
       }
+      if (url.includes("worldbank.org") && url.includes("FP.CPI.TOTL.ZG")) {
+        return jsonRes([{}, wbInflation]);
+      }
       return new Response("not found", { status: 404 });
     }) as typeof fetch;
 
@@ -79,9 +87,12 @@ describe("fetchMarketYearlyOverlay (mocked Yahoo v8 chart API)", () => {
     expect(overlay.sp500.length).toBe(n);
     expect(overlay.btc.length).toBe(n);
     expect(overlay.nintendo.length).toBe(n);
+    expect(overlay.inflation.length).toBe(n);
+    expect(overlay.inflationYoY.length).toBe(n);
     expect(overlay.sp500.every((v) => typeof v === "number" && !Number.isNaN(v))).toBe(true);
     expect(overlay.btc.every((v) => typeof v === "number" && !Number.isNaN(v))).toBe(true);
     expect(overlay.nintendo.every((v) => typeof v === "number" && !Number.isNaN(v))).toBe(true);
+    expect(overlay.inflation.every((v) => typeof v === "number" && !Number.isNaN(v))).toBe(true);
   });
 
   it("still returns length-matched placeholder series when Yahoo returns empty (flat mid-chart)", async () => {
@@ -95,5 +106,7 @@ describe("fetchMarketYearlyOverlay (mocked Yahoo v8 chart API)", () => {
     expect(overlay.sp500.length).toBe(n);
     expect(overlay.btc.length).toBe(n);
     expect(overlay.nintendo.length).toBe(n);
+    expect(overlay.inflation.length).toBe(n);
+    expect(overlay.inflationYoY.length).toBe(n);
   });
 });

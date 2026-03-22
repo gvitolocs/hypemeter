@@ -13,6 +13,8 @@ describe("sliceBacktrackView", () => {
       sp500: [10, 20, 30, 40],
       btc: [1, 2, 3, 4],
       nintendo: [5, 5, 5, 5],
+      inflationYoY: [2, 2, 2, 2],
+      inflation: [0, 33, 66, 100],
     };
     const events = [
       { year: 2005, label: "a", intensity: 1 },
@@ -27,13 +29,15 @@ describe("sliceBacktrackView", () => {
       sp500: [30, 40],
       btc: [3, 4],
       nintendo: [5, 5],
+      inflationYoY: [2, 2],
+      inflation: [66, 100],
     });
     expect(out.events).toEqual([{ year: 2007, label: "b", intensity: 2 }]);
   });
 
   it("no-ops when series is shorter than N", () => {
     const history = [{ year: 2024, score: 50 }];
-    const marketOverlay = { sp500: [1], btc: [2], nintendo: [3] };
+    const marketOverlay = { sp500: [1], btc: [2], nintendo: [3], inflationYoY: [2], inflation: [50] };
     const out = sliceBacktrackView(history, marketOverlay, [], 3);
     expect(out.history).toEqual(history);
     expect(out.marketOverlay).toEqual(marketOverlay);

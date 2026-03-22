@@ -12,6 +12,7 @@ import {
   STOOQ_QUOTE_7974_JP,
   STOOQ_QUOTE_BTCUSD,
   STOOQ_QUOTE_SPX,
+  WORLD_BANK_US_CPI_INFLATION,
   YAHOO_QUOTE_BTC,
   YAHOO_QUOTE_SP500,
 } from "@/lib/yahooQuotes";
@@ -101,6 +102,16 @@ export default function BacktrackMarketSection({
         : market.bitcoinSource === "stooq" || market.bitcoinSource === "stooq-daily"
           ? STOOQ_QUOTE_BTCUSD
           : YAHOO_QUOTE_BTC;
+
+  const inflationSidecar = useMemo(() => {
+    const y = marketOverlay.inflationYoY;
+    if (!y.length) return { hasData: false as const, pct: null as number | null, year: null as number | null };
+    const spread = Math.max(...y) - Math.min(...y);
+    if (spread < 1e-6) return { hasData: false as const, pct: null, year: null };
+    const pct = y[y.length - 1] ?? null;
+    const year = history[history.length - 1]?.year ?? null;
+    return { hasData: true as const, pct, year };
+  }, [marketOverlay.inflationYoY, history]);
 
   return (
     <section className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
@@ -227,6 +238,38 @@ export default function BacktrackMarketSection({
                     · prev {formatUsd(market.nintendoPreviousClose)}
                   </span>
                 ) : null}
+              </p>
+            </a>
+            <a
+              href={WORLD_BANK_US_CPI_INFLATION}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex flex-col gap-1 rounded-xl border bg-slate-900/90 px-3 py-2.5 transition-colors hover:bg-slate-900 ${
+                highlight === "inflation"
+                  ? "border-indigo-400/70 ring-1 ring-indigo-400/30"
+                  : "border-white/10 hover:border-indigo-400/45"
+              }`}
+              onMouseEnter={() => setHighlight("inflation")}
+              onMouseLeave={() => setHighlight(null)}
+            >
+              <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
+                US CPI inflation{" "}
+                <span className="font-normal normal-case text-slate-600">· World Bank annual</span>
+              </p>
+              <p
+                className={`text-xl font-bold tabular-nums leading-tight sm:text-2xl ${growthPctColorClass(
+                  inflationSidecar.hasData ? inflationSidecar.pct : null,
+                  "inflation",
+                )}`}
+              >
+                {inflationSidecar.hasData && inflationSidecar.pct !== null
+                  ? formatGrowthPct(inflationSidecar.pct)
+                  : "N/A"}
+              </p>
+              <p className="text-[11px] leading-snug text-slate-500">
+                {inflationSidecar.hasData && inflationSidecar.year !== null
+                  ? `Latest in chart: ${inflationSidecar.year} (YoY %)`
+                  : "Annual CPI series (overlay)"}
               </p>
             </a>
           </div>
