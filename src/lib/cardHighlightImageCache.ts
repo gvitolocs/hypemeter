@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { CARD_TRADER_HIGHLIGHT_CACHE_SEC } from "@/lib/homePageCacheConfig";
+import { imageBytesLookLikeRaster } from "@/lib/cardHighlightImageVerify";
 
 /** Only fetch images from CardTrader hosts (avoid open proxy). */
 export function isAllowedCardTraderImageUrl(url: string): boolean {
@@ -45,6 +46,11 @@ export async function fetchCardTraderImageBytesUncached(imageUrl: string): Promi
   if (body.length < 32) {
     throw new Error("card_highlight_image: body too small");
   }
+  if (!imageBytesLookLikeRaster(body)) {
+    throw new Error(
+      "card_highlight_image: response is not a known image format (likely HTML/error from upstream)",
+    );
+  }
   let contentType =
     res.headers.get("content-type")?.split(";")[0]?.trim() ?? "image/jpeg";
   if (contentType.includes("text/html")) {
@@ -59,10 +65,13 @@ export async function fetchCardTraderImageBytesUncached(imageUrl: string): Promi
 }
 
 /**
- * Cached bytes — inner fetch throws on failure so a bad upstream is not stored as empty for 24h.
+ * Cached bytes per **calendar day** + URL — same file until Europe/Rome midnight.
  */
 export const getCachedCardHighlightImage = unstable_cache(
-  async (imageUrl: string) => fetchCardTraderImageBytesUncached(imageUrl),
-  ["card-highlight-image-bytes"],
+  async (imageUrl: string, dayKey: string) => {
+    void dayKey;
+    return fetchCardTraderImageBytesUncached(imageUrl);
+  },
+  ["card-highlight-image-bytes-v2"],
   { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC },
 );

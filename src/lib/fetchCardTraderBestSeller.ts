@@ -3,6 +3,7 @@
  */
 
 import { unstable_cache } from "next/cache";
+import { cardHighlightCalendarDayKey } from "@/lib/cardHighlightCalendarDay";
 import { CARD_TRADER_HIGHLIGHT_CACHE_SEC } from "@/lib/homePageCacheConfig";
 
 export type CardTraderBestSeller = {
@@ -289,23 +290,28 @@ async function fetchJinaMarkdown(): Promise<string | null> {
 }
 
 const fetchCardTraderPokemonBestSellerCached = unstable_cache(
-  async (): Promise<CardTraderBestSeller | null> => {
+  async (dayKey: string): Promise<CardTraderBestSeller | null> => {
+    void dayKey;
     try {
       const text = await fetchJinaMarkdown();
       if (!text) return null;
-      return parseCardTraderBestSellerFromText(text);
+      const parsed = parseCardTraderBestSellerFromText(text);
+      if (parsed?.imageUrl && process.env.DEBUG_CARDTRADER === "1") {
+        dbg("parsed imageUrl host", new URL(parsed.imageUrl).hostname, "day", dayKey);
+      }
+      return parsed;
     } catch (e) {
       dbg("fetch error", e);
       return null;
     }
   },
-  ["cardtrader-pokemon-best-seller-v1"],
+  ["cardtrader-pokemon-best-seller-v2"],
   { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC },
 );
 
-/** Parsed best-seller row; Jina fetch runs at most once per ~24h (Next Data Cache). */
+/** Parsed best-seller row; Jina fetch at most once per **calendar day** (Europe/Rome), then Data Cache. */
 export async function fetchCardTraderPokemonBestSeller(): Promise<CardTraderBestSeller | null> {
-  return fetchCardTraderPokemonBestSellerCached();
+  return fetchCardTraderPokemonBestSellerCached(cardHighlightCalendarDayKey());
 }
 
 /** Raw Jina body for debug API (do not log full text in production). */
