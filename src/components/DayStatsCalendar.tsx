@@ -71,7 +71,7 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/day-stats?date=${date}`);
+      const res = await fetch(`/api/day-stats?date=${date}`, { cache: "no-store" });
       if (!res.ok) {
         const payload = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(payload.error ?? "Failed loading daily stats");
@@ -229,7 +229,15 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
                 </div>
                 <div className="rounded-lg border border-white/10 bg-slate-900 p-2">
                   <p className="text-[10px] uppercase text-slate-500">Headlines</p>
-                  <p className="text-base font-bold text-white">{data.stats.headlineCount}</p>
+                  <p className="text-base font-bold text-white">
+                    {data.stats.headlineCount}
+                    <span className="text-xs text-slate-400">/20</span>
+                    {data.stats.headlineCount >= 20 ? (
+                      <span className="ml-1 rounded bg-cyan-500/20 px-1.5 py-0.5 text-[10px] text-cyan-200">
+                        MAX
+                      </span>
+                    ) : null}
+                  </p>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-slate-900 p-2">
                   <p className="text-[10px] uppercase text-slate-500">Sources</p>
