@@ -1633,12 +1633,11 @@ function hashStringToRange(input: string, min: number, max: number) {
 }
 
 /**
- * Pick the Pokémon name (PokeAPI slug) that is strongest across the whole RSS set:
- * prioritize how many distinct headlines mention it, then total weighted score.
- * Uses title + summary only (no article HTML) so sidebar/footer noise can't pick Sealeo, etc.
+ * Rank Pokémon slugs by weighted mentions across RSS (recency-weighted).
+ * Title + summary only (no article HTML).
  */
-function computeFeedWidePokemonWinner(items: NewsItem[], catalog: string[]): string | null {
-  if (items.length === 0 || catalog.length === 0) return null;
+function computeFeedWidePokemonLeaderboard(items: NewsItem[], catalog: string[]): string[] {
+  if (items.length === 0 || catalog.length === 0) return [];
   /** Weighted presence so older headlines don't drive "today" as much as fresh ones. */
   const articleWeight = new Map<string, number>();
   const weightedTotal = new Map<string, number>();
@@ -1668,14 +1667,40 @@ function computeFeedWidePokemonWinner(items: NewsItem[], catalog: string[]): str
   }
 
   const names = [...articleWeight.keys()];
-  if (names.length === 0) return null;
+  if (names.length === 0) return [];
   names.sort((a, b) => {
     const ca = articleWeight.get(a) ?? 0;
     const cb = articleWeight.get(b) ?? 0;
     if (cb !== ca) return cb - ca;
     return (weightedTotal.get(b) ?? 0) - (weightedTotal.get(a) ?? 0);
   });
-  return names[0] ?? null;
+  return names;
+}
+
+/** Keep leaderboard order; only species still mentioned in headlines newer than `maxHours`. */
+function filterLeaderboardByRecentPresence(
+  items: NewsItem[],
+  catalog: string[],
+  leaderboard: string[],
+  maxHours = 72,
+): string[] {
+  if (leaderboard.length === 0) return [];
+  const kept = leaderboard.filter((slug) =>
+    items.some(
+      (item) => hoursAgo(item.pubDate) <= maxHours && articleMentionsPokemonSlug(item, slug, catalog),
+    ),
+  );
+  return kept.length > 0 ? kept : leaderboard;
+}
+
+/**
+ * One PoD per calendar day: rotate among the top-N feed leaders so #1 (e.g. Hoppip) doesn't own every day.
+ */
+function pickDailyPokemonSlugFromLeaderboard(leaderboard: string[], dateIso: string): string | null {
+  if (leaderboard.length === 0) return null;
+  const poolSize = Math.min(8, leaderboard.length);
+  const idx = hashStringToRange(`${dateIso}|pokemon-of-day`, 0, poolSize - 1);
+  return leaderboard[idx] ?? null;
 }
 
 function articleMentionsPokemonSlug(item: NewsItem, slug: string, catalog: string[]): boolean {
@@ -1724,7 +1749,10 @@ async function resolvePokemonOfDay(
   items: NewsItem[],
   catalog: string[],
 ): Promise<{ pokemon: PokemonOfDay | null; winnerSlug: string | null }> {
-  const winnerSlug = computeFeedWidePokemonWinner(items, catalog);
+  const dateIso = new Date().toISOString().slice(0, 10);
+  const leaderboard = computeFeedWidePokemonLeaderboard(items, catalog);
+  const pool = filterLeaderboardByRecentPresence(items, catalog, leaderboard);
+  const winnerSlug = pickDailyPokemonSlugFromLeaderboard(pool, dateIso);
   if (winnerSlug) {
     const pokemon = await fetchPokemonByIdentifier(winnerSlug);
     if (pokemon) return { pokemon, winnerSlug };
