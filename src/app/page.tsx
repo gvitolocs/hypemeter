@@ -34,6 +34,7 @@ const NEWS_URL = `https://news.google.com/rss/search?q=${NEWS_QUERY}&hl=en-US&gl
 const MARKET_QUOTES_URL =
   "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,BTC-USD";
 const STOOQ_SP500_URL = "https://stooq.com/q/l/?s=%5Espx&i=d";
+const STOOQ_BTC_URL = "https://stooq.com/q/l/?s=btcusd&i=d";
 const COINGECKO_BTC_URL =
   "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
 const GOOGLE_TRENDS_DAILY_RSS = "https://trends.google.com/trending/rss?geo=US";
@@ -134,6 +135,9 @@ function isLowSignalItem(item: NewsItem) {
 function curateNewsItems(items: NewsItem[]) {
   const deduped = new Map<string, NewsItem>();
   for (const item of items) {
+    if (!/(pokemon|pokémon)/i.test(item.title)) {
+      continue;
+    }
     if (isLowSignalItem(item)) {
       continue;
     }
@@ -476,67 +480,62 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     updatedAt: null,
   };
 
+  const parseStooqClose = (csv: string) => {
+    const line = csv.trim().split("\n")[0] ?? "";
+    const cols = line.split(",");
+    if (cols.length < 7) return null;
+    const close = Number(cols[6]);
+    return Number.isNaN(close) ? null : close;
+  };
+
   try {
-    const response = await fetch(MARKET_QUOTES_URL, {
-      next: { revalidate: 300 },
-      headers: {
-        "user-agent": "Mozilla/5.0 hypemeter",
-      },
-    });
-    if (response.ok) {
-      const data = (await response.json()) as {
-        quoteResponse?: {
-          result?: Array<{
-            symbol?: string;
-            regularMarketPrice?: number;
-            regularMarketTime?: number;
-          }>;
-        };
+    const [spRes, btcRes] = await Promise.all([
+      fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
+      fetch(STOOQ_BTC_URL, { next: { revalidate: 900 } }),
+    ]);
+    const sp500 = spRes.ok ? parseStooqClose(await spRes.text()) : null;
+    const bitcoin = btcRes.ok ? parseStooqClose(await btcRes.text()) : null;
+    if (sp500 !== null && bitcoin !== null) {
+      return {
+        sp500,
+        bitcoin,
+        updatedAt: new Date().toLocaleString("en-US", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }),
       };
-
-      const result = data.quoteResponse?.result ?? [];
-      const sp500 = result.find((entry) => entry.symbol === "^GSPC");
-      const bitcoin = result.find((entry) => entry.symbol === "BTC-USD");
-      const latestEpoch = Math.max(
-        sp500?.regularMarketTime ?? 0,
-        bitcoin?.regularMarketTime ?? 0,
-      );
-
-      if (
-        (sp500?.regularMarketPrice ?? null) !== null &&
-        (bitcoin?.regularMarketPrice ?? null) !== null
-      ) {
-        return {
-          sp500: sp500?.regularMarketPrice ?? null,
-          bitcoin: bitcoin?.regularMarketPrice ?? null,
-          updatedAt:
-            latestEpoch > 0
-              ? new Date(latestEpoch * 1000).toLocaleString("en-US", {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })
-              : null,
-        };
-      }
     }
   } catch {
     // fallback below
   }
 
   try {
-    const [spRes, btcRes] = await Promise.all([
+    const [spRes, btcRes, yahooRes] = await Promise.all([
       fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
       fetch(COINGECKO_BTC_URL, { next: { revalidate: 300 } }),
+      fetch(MARKET_QUOTES_URL, {
+        next: { revalidate: 300 },
+        headers: {
+          "user-agent": "Mozilla/5.0 hypemeter",
+        },
+      }),
     ]);
     const spText = spRes.ok ? await spRes.text() : "";
     const btcData = btcRes.ok
       ? ((await btcRes.json()) as { bitcoin?: { usd?: number } })
       : {};
-
-    const rows = spText.trim().split("\n");
-    const latest = rows.length > 1 ? rows[1].split(",") : [];
-    const sp500 = latest.length >= 7 ? Number(latest[6]) : null;
-    const bitcoin = btcData.bitcoin?.usd ?? null;
+    const yahooData = yahooRes.ok
+      ? ((await yahooRes.json()) as {
+          quoteResponse?: {
+            result?: Array<{ symbol?: string; regularMarketPrice?: number }>;
+          };
+        })
+      : {};
+    const sp500 = parseStooqClose(spText);
+    const yahooBtc =
+      yahooData.quoteResponse?.result?.find((entry) => entry.symbol === "BTC-USD")
+        ?.regularMarketPrice ?? null;
+    const bitcoin = btcData.bitcoin?.usd ?? yahooBtc;
     const hasValues =
       sp500 !== null && !Number.isNaN(sp500) && bitcoin !== null && !Number.isNaN(bitcoin);
 
