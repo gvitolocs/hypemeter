@@ -14,6 +14,9 @@ export const MARKET_SNAPSHOT_PAGE_FALLBACK: MarketSnapshot = {
   bitcoinGrowthPct: 0.12,
   nintendoGrowthPct: -3.29,
   updatedAt: null,
+  nintendoSource: "adr",
+  sp500Source: "yahoo-daily",
+  bitcoinSource: "yahoo-daily",
 };
 
 function stampNow(): string {
@@ -54,6 +57,9 @@ export function applyMarketSnapshotFallback(snapshot: MarketSnapshot): MarketSna
     sp500GrowthPct: snapshot.sp500GrowthPct ?? f.sp500GrowthPct,
     bitcoinGrowthPct: snapshot.bitcoinGrowthPct ?? f.bitcoinGrowthPct,
     nintendoGrowthPct: snapshot.nintendoGrowthPct ?? f.nintendoGrowthPct,
+    nintendoSource: snapshot.nintendoSource ?? f.nintendoSource,
+    sp500Source: snapshot.sp500Source ?? f.sp500Source,
+    bitcoinSource: snapshot.bitcoinSource ?? f.bitcoinSource,
     updatedAt: snapshot.updatedAt ?? stampNow(),
   };
 }

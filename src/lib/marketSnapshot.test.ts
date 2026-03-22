@@ -4,7 +4,9 @@ import {
   computeBitcoinStooqFallbackPath,
   computeSp500Metrics,
   findYahooQuoteEntry,
+  jpyPairToUsdApprox,
   mergeYahooQuotes,
+  parseStooqDailyDlLastTwoCloses,
   parseStooqMetrics,
   parseYahooChartLastTwoCloses,
   parseYahooSymbol,
@@ -212,6 +214,22 @@ describe("computeSp500Metrics / computeBitcoin*", () => {
     const out = computeBitcoinCoinGeckoFallbackPath(yahoo, 69000);
     expect(out.bitcoin).toBe(69000);
     expect(out.bitcoinGrowthPct).toBeNull();
+  });
+});
+
+describe("parseStooqDailyDlLastTwoCloses", () => {
+  it("reads last two closes from Stooq daily CSV", () => {
+    const csv = `Date,Open,High,Low,Close,Volume
+2026-03-17,100,101,99,100.5,1
+2026-03-18,101,103,100,102.0,2`;
+    const out = parseStooqDailyDlLastTwoCloses(csv);
+    expect(out).toEqual({ last: 102, prev: 100.5 });
+  });
+});
+
+describe("jpyPairToUsdApprox", () => {
+  it("divides JPY by USDJPY (yen per USD)", () => {
+    expect(jpyPairToUsdApprox(15922.5, 150.15)).toBeCloseTo(106.04, 2);
   });
 });
 

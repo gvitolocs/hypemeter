@@ -10,8 +10,8 @@ const YAHOO_BATCH =
 const YAHOO_GSPC = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC";
 const YAHOO_BTC = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=BTC-USD";
 const YAHOO_NTDY = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=NTDOY";
-/** Matches `fetchMarketSnapshot` chart URL (range may be 1y). */
-const isYahooNtdyChart = (url: string) => url.includes("/v8/finance/chart/NTDOY");
+const isStooqUsdjpy = (url: string) => url.includes("stooq.com") && url.includes("usdjpy");
+const isStooq7974JpDaily = (url: string) => url.includes("stooq.com") && url.includes("7974.jp") && url.includes("/q/d/l/");
 const COINGECKO_BTC = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
 
 const SAMPLE_STOOQ_LINE = (close: number, open: number) =>
@@ -33,6 +33,15 @@ function textRes(body: string, ok = true): Response {
 function jsonRes(data: unknown, ok = true): Response {
   const body = JSON.stringify(data);
   return textRes(body, ok);
+}
+
+/** Yahoo v8 chart — two daily closes [prevBar, lastBar] (matches parseYahooChartLastTwoCloses). */
+function yahooChartClosesJson(closes: number[]) {
+  return jsonRes({
+    chart: {
+      result: [{ indicators: { quote: [{ close: closes }] } }],
+    },
+  });
 }
 
 describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
@@ -84,6 +93,13 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : (input as Request).url;
 
+      if (url.includes("/v8/finance/chart/")) {
+        if (url.includes("%5EGSPC")) return yahooChartClosesJson([6606.49, 6506.48]);
+        if (url.includes("BTC-USD")) return yahooChartClosesJson([70723.26, 68805.84]);
+        if (url.includes("NTDOY")) return yahooChartClosesJson([14.2, 14.5]);
+        return yahooChartClosesJson([]);
+      }
+
       if (url.startsWith(STOOQ_SP500)) {
         return textRes(SAMPLE_STOOQ_LINE(9999, 10000));
       }
@@ -116,6 +132,9 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
     expect(snap.bitcoinGrowthPct).toBeCloseTo(-2.71, 2);
     expect(snap.nintendo).toBe(14.5);
     expect(snap.nintendoPreviousClose).toBe(14.2);
+    expect(snap.nintendoSource).toBe("adr");
+    expect(snap.sp500Source).toBe("yahoo-daily");
+    expect(snap.bitcoinSource).toBe("yahoo-daily");
     expect(snap.updatedAt).toMatch(/\d{4}/);
   });
 
@@ -159,6 +178,12 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
 
     const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/v8/finance/chart/")) {
+        if (url.includes("%5EGSPC")) return yahooChartClosesJson([99, 100]);
+        if (url.includes("BTC-USD")) return yahooChartClosesJson([49000, 50000]);
+        if (url.includes("NTDOY")) return yahooChartClosesJson([13, 14]);
+        return yahooChartClosesJson([]);
+      }
       if (url.startsWith(STOOQ_SP500) || url.startsWith(STOOQ_BTC)) {
         return textRes(SAMPLE_STOOQ_LINE(1, 2));
       }
@@ -208,6 +233,20 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : (input as Request).url;
 
+      if (url.includes("/v8/finance/chart/")) {
+        return yahooChartClosesJson([]);
+      }
+      if (url.includes("q/d/l") && url.includes("%5Espx")) {
+        return textRes(`Date,Open,High,Low,Close,Volume
+2025-03-18,1,1,1,6606.49,1
+2025-03-19,1,1,1,${spxClose},1`);
+      }
+      if (url.includes("q/d/l") && url.includes("btcusd")) {
+        return textRes(`Date,Open,High,Low,Close,Volume
+2025-03-18,1,1,1,70000,1
+2025-03-19,1,1,1,${btcClose},1`);
+      }
+
       if (url.startsWith(STOOQ_SP500)) {
         return textRes(SAMPLE_STOOQ_LINE(spxClose, spxOpen));
       }
@@ -239,9 +278,11 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
 
     const snap = await fetchMarketSnapshot();
     expect(snap.sp500).toBe(spxClose);
-    expect(snap.sp500GrowthPct).toBeCloseTo(((spxClose - spxOpen) / spxOpen) * 100, 4);
+    expect(snap.sp500GrowthPct).toBeCloseTo(((spxClose - 6606.49) / 6606.49) * 100, 4);
+    expect(snap.sp500Source).toBe("stooq-daily");
     expect(snap.bitcoin).toBe(btcClose);
-    expect(snap.bitcoinGrowthPct).toBeCloseTo(((btcClose - btcOpen) / btcOpen) * 100, 4);
+    expect(snap.bitcoinGrowthPct).toBeCloseTo(((btcClose - 70000) / 70000) * 100, 4);
+    expect(snap.bitcoinSource).toBe("stooq-daily");
   });
 
   it("path 2: after path 1 throws, CoinGecko + Yahoo still produce a snapshot", async () => {
@@ -292,8 +333,17 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
         throw new Error("simulated network failure (path 1)");
       }
 
+      if (url.includes("/v8/finance/chart/")) {
+        if (url.includes("%5EGSPC")) return yahooChartClosesJson([6606.49, 6506.48]);
+        if (url.includes("BTC-USD")) return yahooChartClosesJson([70000, 68800]);
+        if (url.includes("NTDOY")) return yahooChartClosesJson([13.9, 14]);
+        return yahooChartClosesJson([]);
+      }
       if (url.startsWith(STOOQ_SP500)) {
         return textRes(SAMPLE_STOOQ_LINE(111, 112));
+      }
+      if (url.startsWith(STOOQ_BTC)) {
+        return textRes(SAMPLE_STOOQ_LINE(1, 2));
       }
       if (url.startsWith(COINGECKO_BTC)) {
         return jsonRes({ bitcoin: { usd: 68000 } });
@@ -319,7 +369,9 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
     const snap = await fetchMarketSnapshot();
     expect(snap.sp500).toBe(6506.48);
     expect(snap.bitcoin).toBe(68800);
-    expect(snap.bitcoinGrowthPct).toBeCloseTo(-1.7, 2);
+    expect(snap.bitcoinGrowthPct).toBeCloseTo(((68800 - 70000) / 70000) * 100, 4);
+    expect(snap.sp500Source).toBe("yahoo-daily");
+    expect(snap.bitcoinSource).toBe("yahoo-daily");
   });
 
   it("returns full null fallback when both paths fail to produce sp500+bitcoin", async () => {
@@ -331,6 +383,8 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
     expect(snap.sp500).toBeNull();
     expect(snap.bitcoin).toBeNull();
     expect(snap.updatedAt).toBeNull();
+    expect(snap.sp500Source).toBeNull();
+    expect(snap.bitcoinSource).toBeNull();
   });
 
   it("path 1: incomplete Nintendo triggers Stooq NTDY fetch then optional chart", async () => {
@@ -362,6 +416,16 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : (input as Request).url;
 
+      if (url.includes("/v8/finance/chart/")) {
+        if (url.includes("%5EGSPC")) return yahooChartClosesJson([99, 100]);
+        if (url.includes("BTC-USD")) return yahooChartClosesJson([49000, 50000]);
+        if (url.includes("NTDOY")) {
+          if (url.includes("range=14d")) return yahooChartClosesJson([]);
+          return yahooChartClosesJson([13.5, 14.0, 14.2]);
+        }
+        return yahooChartClosesJson([]);
+      }
+
       if (url.startsWith(STOOQ_SP500) || url.startsWith(STOOQ_BTC)) {
         return textRes(SAMPLE_STOOQ_LINE(1, 2));
       }
@@ -377,27 +441,8 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
       }
       if (url === YAHOO_GSPC) return jsonRes(gspcYahoo);
       if (url === YAHOO_BTC) return jsonRes(btcYahoo);
-      // NTDOY empty → code fetches Stooq NTDY
       if (url === YAHOO_NTDY) {
         return jsonRes({ quoteResponse: { result: [] } });
-      }
-      if (isStooqNtdy(url)) {
-        return textRes(
-          "Symbol,Date,Time,Open,High,Low,Close,Volume\nntdoy.us,2025-03-20,00:00:00,14,14,14.2,14.2,1",
-        );
-      }
-      if (isYahooNtdyChart(url)) {
-        return jsonRes({
-          chart: {
-            result: [
-              {
-                indicators: {
-                  quote: [{ close: [13.5, 14.0, 14.2] }],
-                },
-              },
-            ],
-          },
-        });
       }
 
       throw new Error(`unexpected: ${url}`);
@@ -406,6 +451,86 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
     const snap = await fetchMarketSnapshot();
     expect(snap.sp500).toBe(100);
     expect(snap.bitcoin).toBe(50000);
-    expect(snap.nintendo).not.toBeNull();
+    expect(snap.sp500Source).toBe("yahoo-daily");
+    expect(snap.bitcoinSource).toBe("yahoo-daily");
+    expect(snap.nintendo).toBeCloseTo(14.2, 4);
+    expect(snap.nintendoPreviousClose).toBeCloseTo(14, 4);
+    expect(snap.nintendoSource).toBe("adr");
+  });
+
+  it("path 1: Tokyo Yahoo 7974.T + Stooq USDJPY when NTDOY quote and ADR Stooq are empty", async () => {
+    const gspcYahoo = {
+      quoteResponse: {
+        result: [
+          {
+            symbol: "^GSPC",
+            regularMarketPrice: 100,
+            regularMarketPreviousClose: 99,
+            regularMarketChangePercent: 1,
+          },
+        ],
+      },
+    };
+    const btcYahoo = {
+      quoteResponse: {
+        result: [
+          {
+            symbol: "BTC-USD",
+            regularMarketPrice: 50000,
+            regularMarketPreviousClose: 49000,
+            regularMarketChangePercent: 2,
+          },
+        ],
+      },
+    };
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+
+      if (url.includes("/v8/finance/chart/")) {
+        if (url.includes("%5EGSPC")) return yahooChartClosesJson([99, 100]);
+        if (url.includes("BTC-USD")) return yahooChartClosesJson([49000, 50000]);
+        if (url.includes("NTDOY")) return yahooChartClosesJson([]);
+        if (url.includes("7974.T")) return yahooChartClosesJson([10000, 10200]);
+        return yahooChartClosesJson([]);
+      }
+
+      if (url.startsWith(STOOQ_SP500) || url.startsWith(STOOQ_BTC)) {
+        return textRes(SAMPLE_STOOQ_LINE(1, 2));
+      }
+      if (url === YAHOO_BATCH) {
+        return jsonRes({
+          quoteResponse: {
+            result: [
+              ...(gspcYahoo.quoteResponse?.result ?? []),
+              ...(btcYahoo.quoteResponse?.result ?? []),
+            ],
+          },
+        });
+      }
+      if (url === YAHOO_GSPC) return jsonRes(gspcYahoo);
+      if (url === YAHOO_BTC) return jsonRes(btcYahoo);
+      if (url === YAHOO_NTDY) {
+        return jsonRes({ quoteResponse: { result: [] } });
+      }
+      if (isStooqNtdy(url)) {
+        return textRes("x");
+      }
+      if (isStooqUsdjpy(url)) {
+        return textRes(
+          "Symbol,Date,Time,Open,High,Low,Close,Volume\nUSDJPY,2025-03-20,00:00:00,149,151,148,150,1",
+        );
+      }
+      if (isStooq7974JpDaily(url)) {
+        return textRes("Date,Open,High,Low,Close,Volume\n2025-03-18,1,1,1,1,1\n2025-03-19,1,1,1,1,1");
+      }
+
+      throw new Error(`unexpected Tokyo test fetch: ${url}`);
+    }) as typeof fetch;
+
+    const snap = await fetchMarketSnapshot();
+    expect(snap.nintendoSource).toBe("tokyo");
+    expect(snap.nintendo).toBeCloseTo(10200 / 150, 6);
+    expect(snap.nintendoPreviousClose).toBeCloseTo(10000 / 150, 6);
   });
 });

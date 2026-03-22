@@ -3,10 +3,28 @@
  * Kept pure for unit tests; fetch orchestration lives in fetchMarketSnapshot.ts.
  */
 
+/** Where S&P numbers came from (sidecar transparency). */
+export type Sp500QuoteSource =
+  | "yahoo-daily"
+  | "yahoo"
+  | "stooq"
+  | "yahoo-chart"
+  | "stooq-daily";
+
+/** Where BTC numbers came from. */
+export type BitcoinQuoteSource =
+  | "yahoo-daily"
+  | "yahoo"
+  | "stooq"
+  | "stooq-daily"
+  | "coingecko"
+  | "yahoo-chart"
+  | "binance";
+
 export type MarketSnapshot = {
   sp500: number | null;
   bitcoin: number | null;
-  /** Nintendo Co. ADR (US OTC), USD — see Market Sidecar. */
+  /** Nintendo Co. — USD (ADR) or USD approx from Tokyo JPY ÷ USDJPY. */
   nintendo: number | null;
   /** Prior session close (USD), when available — Yahoo quote or daily chart. */
   nintendoPreviousClose: number | null;
@@ -14,6 +32,12 @@ export type MarketSnapshot = {
   bitcoinGrowthPct: number | null;
   nintendoGrowthPct: number | null;
   updatedAt: string | null;
+  /**
+   * `adr` = Yahoo/Stooq NTDOY (US OTC). `tokyo` = 7974.T chart or Stooq 7974.jp, converted to USD.
+   */
+  nintendoSource: "adr" | "tokyo" | null;
+  sp500Source: Sp500QuoteSource | null;
+  bitcoinSource: BitcoinQuoteSource | null;
 };
 
 export type YahooFinanceQuoteBundle = {
@@ -162,6 +186,36 @@ export function parseStooqMetrics(csv: string): { close: number | null; growthPc
     close: validClose ? close : null,
     growthPct,
   };
+}
+
+/**
+ * Stooq `q/d/l` daily history: header `Date,Open,High,Low,Close` (+ optional Volume).
+ * Returns last two trading closes (JPY for 7974.jp, etc.).
+ */
+export function parseStooqDailyDlLastTwoCloses(csv: string): { last: number; prev: number } | null {
+  const lines = csv
+    .trim()
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return null;
+  const dataLines = /^date,/i.test(lines[0] ?? "") ? lines.slice(1) : lines;
+  if (dataLines.length < 2) return null;
+  const parseClose = (line: string) => {
+    const cols = line.split(",").map((c) => c.trim());
+    if (cols.length < 5) return NaN;
+    return Number(cols[4]);
+  };
+  const last = parseClose(dataLines[dataLines.length - 1] ?? "");
+  const prev = parseClose(dataLines[dataLines.length - 2] ?? "");
+  if (Number.isNaN(last) || Number.isNaN(prev) || last <= 0 || prev <= 0) return null;
+  return { last, prev };
+}
+
+/** JPY equity ÷ USDJPY (JPY per 1 USD) → USD notional for display. */
+export function jpyPairToUsdApprox(jpy: number, usdjpy: number): number | null {
+  if (!(usdjpy > 0) || !Number.isFinite(jpy)) return null;
+  return jpy / usdjpy;
 }
 
 /** Last two daily closes from Yahoo v8 chart (skips nulls — weekends/holidays). */

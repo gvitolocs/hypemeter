@@ -22,6 +22,9 @@ describe("applyMarketSnapshotFallback", () => {
       sp500GrowthPct: null,
       bitcoinGrowthPct: -0.18,
       nintendoGrowthPct: null,
+      nintendoSource: null,
+      sp500Source: null,
+      bitcoinSource: null,
       updatedAt: "Mar 22, 2026, 3:00 PM",
     });
     expect(out.sp500).toBe(MARKET_SNAPSHOT_PAGE_FALLBACK.sp500);
@@ -41,6 +44,9 @@ describe("applyMarketSnapshotFallback", () => {
       sp500GrowthPct: null,
       bitcoinGrowthPct: null,
       nintendoGrowthPct: null,
+      nintendoSource: null,
+      sp500Source: null,
+      bitcoinSource: null,
       updatedAt: null,
     });
     expect(out.sp500).toBeNull();
@@ -56,6 +62,9 @@ describe("applyMarketSnapshotFallback", () => {
       sp500GrowthPct: null,
       bitcoinGrowthPct: null,
       nintendoGrowthPct: null,
+      nintendoSource: null,
+      sp500Source: null,
+      bitcoinSource: null,
       updatedAt: null,
     });
     expect(out.sp500).toBeNull();
@@ -74,6 +83,9 @@ describe("applyMarketSnapshotFallback", () => {
       sp500GrowthPct: null,
       bitcoinGrowthPct: null,
       nintendoGrowthPct: null,
+      nintendoSource: null,
+      sp500Source: null,
+      bitcoinSource: null,
       updatedAt: null,
     });
     expect(out.sp500).toBeNull();
@@ -93,6 +105,9 @@ describe("applyMarketSnapshotFallback", () => {
       sp500GrowthPct: null,
       bitcoinGrowthPct: null,
       nintendoGrowthPct: null,
+      nintendoSource: null,
+      sp500Source: null,
+      bitcoinSource: null,
       updatedAt: null,
     });
     expect(out.sp500).toBeNull();
