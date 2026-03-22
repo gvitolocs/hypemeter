@@ -1761,19 +1761,6 @@ export default async function Home() {
               Market Momentum (20%), Availability Pressure (17%), Event Catalyst
               (13%), Community Sentiment (10%), Product Stress (10%).
             </p>
-            <a
-              className="mt-4 inline-block text-sm font-semibold text-cyan-300 hover:text-cyan-200"
-              href="https://edition.cnn.com/markets/fear-and-greed"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Inspiration: CNN Fear & Greed →
-            </a>
-            <p className="mt-4 text-xs text-slate-500">
-              Model note: historical values are a backtracking estimate from key
-              yearly Pokemon cycle intensity and are blended with today&apos;s
-              live score.
-            </p>
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
               {sentiments.map((sentiment) => (
                 <div
@@ -1794,6 +1781,39 @@ export default async function Home() {
                   </p>
                 </div>
               ))}
+            </div>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-slate-800/70 p-3">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                Social Signal Pulse
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {platformGraph.map((platform) => (
+                  <article
+                    key={`compact-${platform.key}`}
+                    className="rounded-xl border border-white/10 bg-slate-900 p-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
+                        {platform.label}
+                      </p>
+                      <p className="text-sm font-bold text-white">{platform.value}</p>
+                    </div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-700">
+                      <div
+                        className={`h-full rounded-full bg-gradient-to-r ${platform.accent}`}
+                        style={{ width: `${platform.value}%` }}
+                      />
+                    </div>
+                    <p
+                      className={`mt-1 text-[10px] ${
+                        platform.deltaPct >= 0 ? "text-emerald-300" : "text-rose-300"
+                      }`}
+                    >
+                      {platform.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(platform.deltaPct).toFixed(0)}% vs day before
+                    </p>
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -1888,43 +1908,6 @@ export default async function Home() {
             ))}
           </div>
         </section>
-        </ScrollReveal>
-
-        <ScrollReveal delayMs={135}>
-          <section className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
-              Platform Pulse Graph
-            </h3>
-            <p className="mt-2 text-xs text-slate-400">
-              Reddit, YouTube, Google Search, Facebook, and Pokemon official signal intensity.
-            </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              {platformGraph.map((platform) => (
-                <article
-                  key={platform.key}
-                  className="rounded-2xl border border-white/10 bg-slate-800 p-4 hover-lift"
-                >
-                  <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
-                    {platform.label}
-                  </p>
-                  <p className="mt-1 text-2xl font-bold text-white">{platform.value}</p>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-700">
-                    <div
-                      className={`h-full rounded-full bg-gradient-to-r ${platform.accent}`}
-                      style={{ width: `${platform.value}%` }}
-                    />
-                  </div>
-                  <p
-                    className={`mt-2 text-[11px] ${
-                      platform.deltaPct >= 0 ? "text-emerald-300" : "text-rose-300"
-                    }`}
-                  >
-                    {platform.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(platform.deltaPct).toFixed(0)}% vs day before
-                  </p>
-                </article>
-              ))}
-            </div>
-          </section>
         </ScrollReveal>
 
         <ScrollReveal delayMs={150}>
