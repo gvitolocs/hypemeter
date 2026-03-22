@@ -4,12 +4,9 @@ import {
   computeBitcoinCoinGeckoFallbackPath,
   computeBitcoinStooqFallbackPath,
   computeSp500Metrics,
-  mergeParsedYahooQuotes,
   mergeYahooQuotes,
   parseStooqMetrics,
   parseYahooChartLastTwoCloses,
-  parseYahooChartMetaQuote,
-  type ParsedYahooQuote,
 } from "@/lib/marketSnapshot";
 
 const MARKET_QUOTES_URL =
@@ -50,48 +47,6 @@ async function fetchStooqNtdyMetrics(): Promise<{ close: number | null; growthPc
   return { close: null, growthPct: null };
 }
 
-const YAHOO_ORIGIN = "https://finance.yahoo.com";
-
-const yahooBrowserHeaders = () => ({
-  "user-agent": YAHOO_FINANCE_UA,
-  Referer: `${YAHOO_ORIGIN}/`,
-  Origin: YAHOO_ORIGIN,
-});
-
-/** When v7 quote is empty (serverless), v8 chart meta/candles usually still match finance.yahoo.com. */
-async function fetchYahooV8ChartQuote(symbol: string): Promise<ParsedYahooQuote | null> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`;
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 120 },
-      headers: {
-        ...yahooBrowserHeaders(),
-        Referer: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`,
-      },
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    const fromMeta = parseYahooChartMetaQuote(json);
-    if (fromMeta.price !== null) return fromMeta;
-    const { last, prev } = parseYahooChartLastTwoCloses(json);
-    if (last === null) return null;
-    const growthPct =
-      prev !== null && prev > 0 ? ((last - prev) / prev) * 100 : null;
-    return { price: last, previousClose: prev, growthPct };
-  } catch {
-    return null;
-  }
-}
-
-async function enrichYahooFromV8IfNeeded(
-  merged: ParsedYahooQuote,
-  symbol: string,
-): Promise<ParsedYahooQuote> {
-  if (merged.price !== null) return merged;
-  const v8 = await fetchYahooV8ChartQuote(symbol);
-  return v8 ? mergeParsedYahooQuotes(merged, v8) : merged;
-}
-
 async function fetchNintendoFromYahooChart(): Promise<{
   price: number | null;
   previousClose: number | null;
@@ -100,10 +55,7 @@ async function fetchNintendoFromYahooChart(): Promise<{
   try {
     const res = await fetch(YAHOO_CHART_NTDY_URL, {
       next: { revalidate: 900 },
-      headers: {
-        ...yahooBrowserHeaders(),
-        Referer: "https://finance.yahoo.com/quote/NTDOY/",
-      },
+      headers: { "user-agent": YAHOO_FINANCE_UA },
     });
     if (!res.ok) return { price: null, previousClose: null, growthPct: null };
     const json = await res.json();
@@ -142,19 +94,19 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
       fetch(STOOQ_BTC_URL, { next: { revalidate: 900 } }),
       fetch(MARKET_QUOTES_URL, {
         next: { revalidate: 300 },
-        headers: yahooBrowserHeaders(),
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
       fetch(YAHOO_QUOTE_GSPC_ONLY, {
         next: { revalidate: 300 },
-        headers: yahooBrowserHeaders(),
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
       fetch(YAHOO_QUOTE_BTC_ONLY, {
         next: { revalidate: 300 },
-        headers: yahooBrowserHeaders(),
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
       fetch(YAHOO_QUOTE_NTDY_ONLY, {
         next: { revalidate: 300 },
-        headers: yahooBrowserHeaders(),
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
     ]);
     const spx = spRes.ok ? parseStooqMetrics(await spRes.text()) : { close: null, growthPct: null };
@@ -168,16 +120,11 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     const yahooGs = mergeYahooQuotes(gsJson, yahooData, "^GSPC");
     const yahooBtc = mergeYahooQuotes(btcJson, yahooData, "BTC-USD");
     const yahooNtdy = mergeYahooQuotes(ntdyJson, yahooData, "NTDOY");
-    const [yahooGsEn, yahooBtcEn, yahooNtdyEn] = await Promise.all([
-      enrichYahooFromV8IfNeeded(yahooGs, "^GSPC"),
-      enrichYahooFromV8IfNeeded(yahooBtc, "BTC-USD"),
-      enrichYahooFromV8IfNeeded(yahooNtdy, "NTDOY"),
-    ]);
-    const { sp500, sp500GrowthPct } = computeSp500Metrics(yahooGsEn, spx);
-    const { bitcoin, bitcoinGrowthPct } = computeBitcoinStooqFallbackPath(yahooBtcEn, btc);
-    let nintendo = yahooNtdyEn.price;
-    let nintendoGrowthPct = yahooNtdyEn.growthPct;
-    let nintendoPreviousClose = yahooNtdyEn.previousClose;
+    const { sp500, sp500GrowthPct } = computeSp500Metrics(yahooGs, spx);
+    const { bitcoin, bitcoinGrowthPct } = computeBitcoinStooqFallbackPath(yahooBtc, btc);
+    let nintendo = yahooNtdy.price;
+    let nintendoGrowthPct = yahooNtdy.growthPct;
+    let nintendoPreviousClose = yahooNtdy.previousClose;
     if (nintendo === null) {
       const ntd = await fetchStooqNtdyMetrics();
       nintendo = ntd.close;
@@ -213,19 +160,19 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
       fetch(COINGECKO_BTC_URL, { next: { revalidate: 300 } }),
       fetch(MARKET_QUOTES_URL, {
         next: { revalidate: 300 },
-        headers: yahooBrowserHeaders(),
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
       fetch(YAHOO_QUOTE_GSPC_ONLY, {
         next: { revalidate: 300 },
-        headers: yahooBrowserHeaders(),
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
       fetch(YAHOO_QUOTE_BTC_ONLY, {
         next: { revalidate: 300 },
-        headers: yahooBrowserHeaders(),
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
       fetch(YAHOO_QUOTE_NTDY_ONLY, {
         next: { revalidate: 300 },
-        headers: yahooBrowserHeaders(),
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
     ]);
     const spText = spRes.ok ? await spRes.text() : "";
@@ -241,20 +188,15 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     const yahooGs = mergeYahooQuotes(gsJson, yahooData, "^GSPC");
     const yahooBtc = mergeYahooQuotes(btcJson, yahooData, "BTC-USD");
     const yahooNtdy = mergeYahooQuotes(ntdyJson, yahooData, "NTDOY");
-    const [yahooGsEn, yahooBtcEn, yahooNtdyEn] = await Promise.all([
-      enrichYahooFromV8IfNeeded(yahooGs, "^GSPC"),
-      enrichYahooFromV8IfNeeded(yahooBtc, "BTC-USD"),
-      enrichYahooFromV8IfNeeded(yahooNtdy, "NTDOY"),
-    ]);
     const spx = parseStooqMetrics(spText);
-    const { sp500, sp500GrowthPct } = computeSp500Metrics(yahooGsEn, spx);
+    const { sp500, sp500GrowthPct } = computeSp500Metrics(yahooGs, spx);
     const { bitcoin, bitcoinGrowthPct } = computeBitcoinCoinGeckoFallbackPath(
-      yahooBtcEn,
+      yahooBtc,
       btcData.bitcoin?.usd,
     );
-    let nintendo = yahooNtdyEn.price;
-    let nintendoGrowthPct = yahooNtdyEn.growthPct;
-    let nintendoPreviousClose = yahooNtdyEn.previousClose;
+    let nintendo = yahooNtdy.price;
+    let nintendoGrowthPct = yahooNtdy.growthPct;
+    let nintendoPreviousClose = yahooNtdy.previousClose;
     if (nintendo === null) {
       const ntd = await fetchStooqNtdyMetrics();
       nintendo = ntd.close;

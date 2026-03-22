@@ -10,7 +10,8 @@ const YAHOO_BATCH =
 const YAHOO_GSPC = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC";
 const YAHOO_BTC = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=BTC-USD";
 const YAHOO_NTDY = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=NTDOY";
-const isYahooV8Chart = (url: string) => url.includes("query1.finance.yahoo.com/v8/finance/chart/");
+const YAHOO_CHART_NTDY =
+  "https://query1.finance.yahoo.com/v8/finance/chart/NTDOY?interval=1d&range=3mo";
 const COINGECKO_BTC = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
 
 const SAMPLE_STOOQ_LINE = (close: number, open: number) =>
@@ -151,12 +152,6 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
               },
             ],
           },
-        });
-      }
-      // v8 enrichment when v7 empty — return no meta/candles so Stooq session % still applies in this test
-      if (isYahooV8Chart(url)) {
-        return jsonRes({
-          chart: { result: [{ meta: {}, indicators: { quote: [{ close: [] }] } }] },
         });
       }
 
@@ -312,12 +307,7 @@ describe("fetchMarketSnapshot (integration, mocked fetch)", () => {
           "Symbol,Date,Time,Open,High,Low,Close,Volume\nntdoy.us,2025-03-20,00:00:00,14,14,14.2,14.2,1",
         );
       }
-      if (url.includes("/v8/finance/chart/NTDOY")) {
-        if (url.includes("range=5d")) {
-          return jsonRes({
-            chart: { result: [{ meta: {}, indicators: { quote: [{ close: [] }] } }] },
-          });
-        }
+      if (url.startsWith(YAHOO_CHART_NTDY)) {
         return jsonRes({
           chart: {
             result: [
