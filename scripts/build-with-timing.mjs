@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Wraps `next build` so Vercel (and local) build logs show wall-clock timing.
- * Slow *page load* in the browser is SSR/runtime — use DEBUG_PAGE_TIMING=1 (see docs/server-timing.md).
+ * Slow *page load* in the browser is SSR/runtime — use DEBUG_PAGE_TIMING=1 (see `src/lib/serverTiming.ts`).
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";

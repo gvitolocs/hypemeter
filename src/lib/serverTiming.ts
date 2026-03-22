@@ -5,6 +5,7 @@
  * - Set `DEBUG_PAGE_TIMING=1` (Vercel env) to log **every** section duration.
  * - Slow sections (default ≥ `warnMs`, default 10s) always log as `console.warn` so they show in production logs.
  * - `runWithTimingCollector` (used by `/debug`) collects the same labels for an HTML table (no extra logging).
+ * - Build wall time: `scripts/build-with-timing.mjs` prints `[build] … finished in …ms` in deploy logs.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";

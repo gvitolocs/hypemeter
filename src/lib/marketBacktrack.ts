@@ -1,5 +1,9 @@
 /**
  * Yearly closes from **Stooq** daily history → normalized 0–100 series for the hype chart overlay.
+ *
+ * **CPI YoY (inflation line):** baseline years from `src/data/staticCpiYoYByYear.json` (regenerate yearly:
+ * `node scripts/generate-static-cpi-yojson.mjs`). For live years on the chart only, gap-fill order is
+ * (1) FRED API when env `FRED_API_KEY` is set → (2) World Bank → (3) FRED `fredgraph.csv` tail parse.
  */
 
 import staticCpiYoYByYear from "@/data/staticCpiYoYByYear.json";
