@@ -135,24 +135,25 @@ function loadStaticCpiYoYMap(): Map<number, number> {
 }
 
 /**
- * Live YoY for the **current calendar year** only — small FRED API payload (`observation_start` = Jan two years ago).
+ * Live YoY for **cy** and **cy−1** (revisions + no gap when the calendar year turns) — small API payload.
+ * `observation_start` = Jan three years ago → ~36 monthly rows.
  * @see https://fred.stlouisfed.org/docs/api/fred/series_observations.html
  */
-async function fetchFredCurrentYearYoYFromApi(cy: number): Promise<number | null> {
+async function fetchFredLiveYoYFromApi(cy: number): Promise<Map<number, number>> {
   const key = process.env.FRED_API_KEY?.trim();
-  if (!key) return null;
+  if (!key) return new Map();
   try {
     const url = new URL("https://api.stlouisfed.org/fred/series/observations");
     url.searchParams.set("series_id", "CPIAUCSL");
     url.searchParams.set("api_key", key);
     url.searchParams.set("file_type", "json");
-    url.searchParams.set("observation_start", `${cy - 2}-01-01`);
+    url.searchParams.set("observation_start", `${cy - 3}-01-01`);
     url.searchParams.set("sort_order", "asc");
     url.searchParams.set("limit", "120");
     const res = await fetch(url.toString(), {
       next: { revalidate: 3600 },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return new Map();
     const json = (await res.json()) as {
       observations?: Array<{ date?: string; value?: string }>;
     };
@@ -173,38 +174,48 @@ async function fetchFredCurrentYearYoYFromApi(cy: number): Promise<number | null
       });
     }
     monthly.sort((a, b) => a.t - b.t);
-    const map = buildCpiYoYPercentByYearFromMonthlyRows(monthly);
-    return map.get(cy) ?? null;
+    const full = buildCpiYoYPercentByYearFromMonthlyRows(monthly);
+    const out = new Map<number, number>();
+    for (const y of [cy - 1, cy]) {
+      const v = full.get(y);
+      if (v !== undefined) out.set(y, v);
+    }
+    return out;
   } catch {
-    return null;
+    return new Map();
   }
 }
 
-/** Fallback: full graph CSV (only `cy` YoY is read — rest comes from static JSON). */
-async function fetchFredCurrentYearYoYFromGraphCsv(cy: number): Promise<number | null> {
+/** Fallback: full graph CSV — only `cy−1` and `cy` YoY are merged (rest from static JSON). */
+async function fetchFredLiveYoYFromGraphCsv(cy: number): Promise<Map<number, number>> {
   try {
     const res = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL", {
       next: { revalidate: 3600 },
       headers: { "user-agent": STOOQ_HIST_UA },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return new Map();
     const rows = parseFredCpiCsvToMonthlyRows(await res.text());
-    const map = buildCpiYoYPercentByYearFromMonthlyRows(rows);
-    return map.get(cy) ?? null;
+    const full = buildCpiYoYPercentByYearFromMonthlyRows(rows);
+    const out = new Map<number, number>();
+    for (const y of [cy - 1, cy]) {
+      const v = full.get(y);
+      if (v !== undefined) out.set(y, v);
+    }
+    return out;
   } catch {
-    return null;
+    return new Map();
   }
 }
 
-/** Past years from `staticCpiYoYByYear.json`; current year from FRED (API first, then CSV). */
+/** Past years from `staticCpiYoYByYear.json`; last two calendar years refreshed from FRED. */
 async function fetchFredCpiYoYByYear(): Promise<Map<number, number>> {
   const base = loadStaticCpiYoYMap();
   const cy = new Date().getUTCFullYear();
-  let yoy = await fetchFredCurrentYearYoYFromApi(cy);
-  if (yoy === null) {
-    yoy = await fetchFredCurrentYearYoYFromGraphCsv(cy);
+  let live = await fetchFredLiveYoYFromApi(cy);
+  if (live.size === 0) {
+    live = await fetchFredLiveYoYFromGraphCsv(cy);
   }
-  if (yoy !== null) base.set(cy, yoy);
+  for (const [y, v] of live) base.set(y, v);
   return base;
 }
 
