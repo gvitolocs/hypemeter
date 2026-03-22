@@ -164,6 +164,61 @@ export function parseStooqMetrics(csv: string): { close: number | null; growthPc
   };
 }
 
+/**
+ * Yahoo v8 chart `meta` often has regularMarketPrice / previousClose when v7 quote is empty (common on edge/serverless).
+ */
+export function parseYahooChartMetaQuote(json: unknown): ParsedYahooQuote {
+  const result = (json as { chart?: { result?: unknown[] } })?.chart?.result?.[0] as
+    | {
+        meta?: {
+          regularMarketPrice?: number;
+          chartPreviousClose?: number;
+          previousClose?: number;
+          regularMarketChangePercent?: number;
+        };
+      }
+    | undefined;
+  const meta = result?.meta;
+  const rawPrice = meta?.regularMarketPrice;
+  const price =
+    rawPrice !== undefined && rawPrice !== null && !Number.isNaN(Number(rawPrice))
+      ? Number(rawPrice)
+      : null;
+  const rawPrev = meta?.chartPreviousClose ?? meta?.previousClose;
+  const previousClose =
+    rawPrev !== undefined && rawPrev !== null && !Number.isNaN(Number(rawPrev))
+      ? Number(rawPrev)
+      : null;
+  let growthPct =
+    meta?.regularMarketChangePercent !== undefined &&
+    meta?.regularMarketChangePercent !== null &&
+    !Number.isNaN(Number(meta.regularMarketChangePercent))
+      ? Number(meta.regularMarketChangePercent)
+      : null;
+  if (
+    growthPct === null &&
+    price !== null &&
+    previousClose !== null &&
+    previousClose > 0
+  ) {
+    growthPct = ((price - previousClose) / previousClose) * 100;
+  }
+  return { price, growthPct, previousClose };
+}
+
+/** Merge two parsed quotes (e.g. v7 + v8 chart fallback). */
+export function mergeParsedYahooQuotes(a: ParsedYahooQuote, b: ParsedYahooQuote): ParsedYahooQuote {
+  const price = a.price ?? b.price;
+  const previousClose = a.previousClose ?? b.previousClose;
+  let growthPct: number | null = null;
+  if (a.price !== null && a.growthPct !== null) growthPct = a.growthPct;
+  else if (b.price !== null && b.growthPct !== null) growthPct = b.growthPct;
+  else if (price !== null && previousClose !== null && previousClose > 0) {
+    growthPct = ((price - previousClose) / previousClose) * 100;
+  }
+  return { price, growthPct, previousClose };
+}
+
 /** Last two daily closes from Yahoo v8 chart (skips nulls — weekends/holidays). */
 export function parseYahooChartLastTwoCloses(json: unknown): { last: number | null; prev: number | null } {
   const result = (json as { chart?: { result?: unknown[] } })?.chart?.result?.[0] as

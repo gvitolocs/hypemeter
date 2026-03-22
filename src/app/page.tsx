@@ -1584,9 +1584,21 @@ async function fetchPokemonByIdentifier(identifier: string | number): Promise<Po
   }
 }
 
+/** Instagram excluded from Pokémon-of-the-day spotlight (source + outbound URL). */
+function isInstagramArticle(item: NewsItem): boolean {
+  const src = normalize(item.source || "");
+  const link = (item.link || "").toLowerCase();
+  return (
+    src.includes("instagram") ||
+    link.includes("instagram.com") ||
+    link.includes("instagr.am")
+  );
+}
+
 function pickArticleOfDay(items: NewsItem[], pokemonCatalog: string[]): PokemonOfDayArticle | null {
-  if (items.length === 0) return null;
-  const ranked = items
+  const pool = items.filter((item) => !isInstagramArticle(item));
+  if (pool.length === 0) return null;
+  const ranked = pool
     .map((item) => {
       const mentions = extractPokemonMentionsFromText(
         [
@@ -1681,6 +1693,7 @@ function pickSpotlightArticleForPokemon(
   catalog: string[],
 ): PokemonOfDayArticle | null {
   const ranked = items
+    .filter((item) => !isInstagramArticle(item))
     .map((item) => ({
       item,
       rel: scoreArticleRelevance(item),

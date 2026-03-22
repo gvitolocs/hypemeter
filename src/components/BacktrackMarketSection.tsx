@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import HypeBacktrackingChart from "@/components/HypeBacktrackingChart";
-import { formatGrowthPct, formatUsd } from "@/lib/marketFormat";
+import { formatGrowthPct, formatUsd, growthPctColorClass } from "@/lib/marketFormat";
 import type { MarketHighlightKey, MarketYearlyOverlay } from "@/lib/marketBacktrack";
 import { YAHOO_QUOTE_BTC, YAHOO_QUOTE_NTDY, YAHOO_QUOTE_SP500 } from "@/lib/yahooQuotes";
 
@@ -74,7 +74,9 @@ export default function BacktrackMarketSection({
               onMouseLeave={() => setHighlight(null)}
             >
               <p className="text-xs uppercase tracking-[0.12em] text-slate-400">S&P 500</p>
-              <p className="text-2xl font-bold tabular-nums leading-none text-emerald-400">
+              <p
+                className={`text-2xl font-bold tabular-nums leading-none ${growthPctColorClass(market.sp500GrowthPct)}`}
+              >
                 {formatGrowthPct(market.sp500GrowthPct)}
               </p>
               <p className="line-clamp-2 min-h-[2.5rem] text-[11px] leading-snug text-slate-500">
@@ -94,7 +96,12 @@ export default function BacktrackMarketSection({
               onMouseLeave={() => setHighlight(null)}
             >
               <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Bitcoin</p>
-              <p className="text-2xl font-bold tabular-nums leading-none text-amber-300">
+              <p
+                className={`text-2xl font-bold tabular-nums leading-none ${growthPctColorClass(
+                  market.bitcoinGrowthPct,
+                  { up: "text-amber-300", down: "text-rose-400" },
+                )}`}
+              >
                 {formatGrowthPct(market.bitcoinGrowthPct)}
               </p>
               <p className="line-clamp-2 min-h-[2.5rem] text-[11px] leading-snug text-slate-500">
@@ -114,7 +121,12 @@ export default function BacktrackMarketSection({
               onMouseLeave={() => setHighlight(null)}
             >
               <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Nintendo (NTDOY)</p>
-              <p className="text-2xl font-bold tabular-nums leading-none text-rose-400">
+              <p
+                className={`text-2xl font-bold tabular-nums leading-none ${growthPctColorClass(
+                  market.nintendoGrowthPct,
+                  { up: "text-rose-300", down: "text-rose-500" },
+                )}`}
+              >
                 {formatGrowthPct(market.nintendoGrowthPct)}
               </p>
               <p className="line-clamp-2 min-h-[2.5rem] text-[11px] leading-snug text-slate-500">

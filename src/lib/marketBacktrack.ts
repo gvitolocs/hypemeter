@@ -5,6 +5,12 @@
 const YAHOO_CHART_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+const yahooChartHeaders = (symbol: string) => ({
+  "user-agent": YAHOO_CHART_UA,
+  Referer: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`,
+  Origin: "https://finance.yahoo.com",
+});
+
 export type MarketHighlightKey = "sp500" | "btc" | "nintendo";
 
 export type MarketYearlyOverlay = {
@@ -21,7 +27,7 @@ async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1mo&range=max`;
     const res = await fetch(url, {
       next: { revalidate: 3600 },
-      headers: { "user-agent": YAHOO_CHART_UA },
+      headers: yahooChartHeaders(symbol),
     });
     if (!res.ok) return map;
     const json = (await res.json()) as {
@@ -52,11 +58,11 @@ async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
   return map;
 }
 
-/** Pre-first datapoint = first known close (flat line), then forward-fill. */
-function alignYearSeries(years: number[], yearly: YearlyCloseMap): number[] {
+/** Pre-first datapoint = first known close (flat line), then forward-fill. No data → null (skip drawing). */
+function alignYearSeries(years: number[], yearly: YearlyCloseMap): number[] | null {
   const raw = years.map((y) => yearly.get(y) ?? null);
   const firstIdx = raw.findIndex((v) => v != null);
-  if (firstIdx === -1) return years.map(() => 50);
+  if (firstIdx === -1) return null;
   const firstVal = raw[firstIdx]!;
   let last = firstVal;
   return raw.map((v, i) => {
@@ -83,8 +89,12 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     fetchYahooYearlyCloses("BTC-USD"),
     fetchYahooYearlyCloses("NTDOY"),
   ]);
-  const sp500 = normalizeTo100(alignYearSeries(years, spMap));
-  const btc = normalizeTo100(alignYearSeries(years, btcMap));
-  const nintendo = normalizeTo100(alignYearSeries(years, ntMap));
-  return { sp500, btc, nintendo };
+  const spAligned = alignYearSeries(years, spMap);
+  const btcAligned = alignYearSeries(years, btcMap);
+  const ntAligned = alignYearSeries(years, ntMap);
+  return {
+    sp500: spAligned === null ? [] : normalizeTo100(spAligned),
+    btc: btcAligned === null ? [] : normalizeTo100(btcAligned),
+    nintendo: ntAligned === null ? [] : normalizeTo100(ntAligned),
+  };
 }

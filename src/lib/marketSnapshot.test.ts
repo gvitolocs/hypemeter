@@ -4,9 +4,11 @@ import {
   computeBitcoinStooqFallbackPath,
   computeSp500Metrics,
   findYahooQuoteEntry,
+  mergeParsedYahooQuotes,
   mergeYahooQuotes,
   parseStooqMetrics,
   parseYahooChartLastTwoCloses,
+  parseYahooChartMetaQuote,
   parseYahooSymbol,
   type YahooFinanceQuoteBundle,
 } from "./marketSnapshot";
@@ -212,6 +214,36 @@ describe("computeSp500Metrics / computeBitcoin*", () => {
     const out = computeBitcoinCoinGeckoFallbackPath(yahoo, 69000);
     expect(out.bitcoin).toBe(69000);
     expect(out.bitcoinGrowthPct).toBeNull();
+  });
+});
+
+describe("parseYahooChartMetaQuote / mergeParsedYahooQuotes", () => {
+  it("reads v8 chart meta for live quote fallback", () => {
+    const json = {
+      chart: {
+        result: [
+          {
+            meta: {
+              regularMarketPrice: 6500,
+              chartPreviousClose: 6600,
+              regularMarketChangePercent: -1.5,
+            },
+          },
+        ],
+      },
+    };
+    const p = parseYahooChartMetaQuote(json);
+    expect(p.price).toBe(6500);
+    expect(p.previousClose).toBe(6600);
+    expect(p.growthPct).toBeCloseTo(-1.5, 4);
+  });
+
+  it("mergeParsedYahooQuotes prefers v7 then fills from v8", () => {
+    const v7 = { price: null, growthPct: null, previousClose: null };
+    const v8 = { price: 100, growthPct: -2, previousClose: 102 };
+    const m = mergeParsedYahooQuotes(v7, v8);
+    expect(m.price).toBe(100);
+    expect(m.growthPct).toBe(-2);
   });
 });
 
