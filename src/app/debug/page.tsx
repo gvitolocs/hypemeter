@@ -118,6 +118,19 @@ export default async function DebugPage() {
           <code className="rounded bg-slate-800 px-1">ENABLE_DEBUG_CARDTRADER=1</code> for full payloads.
         </p>
 
+        {cardHighlight.status === 404 && cardTrader.status === 404 ? (
+          <div className="mt-6 rounded-xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-sm text-amber-100/95">
+            <p className="font-medium text-amber-200">Debug APIs disabled in production</p>
+            <p className="mt-2 text-amber-100/85">
+              Vercel → your project → <strong>Settings</strong> → <strong>Environment Variables</strong>: add{" "}
+              <code className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-xs">ENABLE_DEBUG_CARDTRADER</code>{" "}
+              = <code className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-xs">1</code> for{" "}
+              <strong>Production</strong>, then redeploy. The sections below will return full JSON (Jina + seller +
+              image) instead of HTTP 404.
+            </p>
+          </div>
+        ) : null}
+
         <section className="mt-8">
           <h2 className="text-lg font-semibold text-amber-200/95">
             Card highlight image <span className="text-xs font-normal text-slate-500">(HTTP {cardHighlight.status})</span>
