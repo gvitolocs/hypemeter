@@ -1394,7 +1394,7 @@ function computeWindowSentiments(args: {
       score: fiveYear,
       tone: toneForSentiment(fiveYear),
       explanation:
-        "Five-year timeline average blended with current market, community, and social pulse (no penalty vs 1Y).",
+        "Five-year timeline average blended with current market, community, and social pulse.",
     },
   ];
   return windows;
