@@ -1,6 +1,6 @@
 import HypeBacktrackingChart from "@/components/HypeBacktrackingChart";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
-import Image from "next/image";
+import ScrollReveal from "@/components/ScrollReveal";
 
 type NewsItem = {
   title: string;
@@ -497,9 +497,17 @@ function computeWindowSentiments(args: {
   );
 
   const cycleRegimeShift = last5 - prev5;
-  const fiveYear = clampScore(
-    last5 * 0.45 + marketScore * 0.25 + score * 0.2 + (50 + cycleRegimeShift * 3) * 0.1,
-  );
+  const structuralDrag = Math.max(0, 55 - last5) * 0.18;
+  const downtrendPenalty = Math.max(0, -cycleRegimeShift) * 1.4;
+  const fiveYearRaw =
+    last5 * 0.43 +
+    marketScore * 0.22 +
+    score * 0.2 +
+    (50 + cycleRegimeShift * 2.6) * 0.1 -
+    4 -
+    structuralDrag -
+    downtrendPenalty;
+  const fiveYear = clampScore(Math.min(oneYear - 2, fiveYearRaw));
 
   const windows: SentimentWindow[] = [
     {
@@ -521,7 +529,8 @@ function computeWindowSentiments(args: {
       label: "5 Year Sentiment",
       score: fiveYear,
       tone: toneForSentiment(fiveYear),
-      explanation: "Supercycle position using 30-year era model and 5-year trend shift.",
+      explanation:
+        "Long-cycle regime estimate with conservative risk bias versus the 1-year window.",
     },
   ];
   return windows;
@@ -770,21 +779,16 @@ export default async function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">
+    <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">
+      <div className="ambient-orb orb-a" />
+      <div className="ambient-orb orb-b" />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <header className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur">
-          <Image
-            src="/images/hype-orb.svg"
-            alt="Decorative Pokemon hype orb"
-            width={380}
-            height={214}
-            className="pointer-events-none absolute -right-8 -top-10 hidden opacity-75 lg:block"
-            priority
-          />
+        <ScrollReveal>
+          <header className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur hover-lift">
           <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
             Pokemon Fear & Greed Remix
           </p>
@@ -796,10 +800,12 @@ export default async function Home() {
             trend signals.
           </p>
           <p className="mt-2 text-xs text-slate-400">Updated: {updatedAt}</p>
-        </header>
+          </header>
+        </ScrollReveal>
 
-        <section className="grid gap-6 lg:grid-cols-[1.15fr_1fr]">
-          <div className="rounded-3xl border border-white/10 bg-slate-900 p-6">
+        <ScrollReveal delayMs={60}>
+          <section className="items-start grid gap-6 lg:grid-cols-[1.15fr_1fr]">
+          <div className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
             <div className="flex flex-wrap items-end justify-between gap-6">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
@@ -814,15 +820,18 @@ export default async function Home() {
                 </p>
                 <p className="text-sm text-slate-400">{mood.vibe}</p>
               </div>
-              <div className="relative h-40 w-40 rounded-full p-3 ring-1 ring-white/20">
+              <div className="group relative h-40 w-40 rounded-full p-3 ring-1 ring-white/20">
                 <div
-                  className="h-full w-full rounded-full"
+                  className="h-full w-full rounded-full transition-transform duration-300 group-hover:scale-[1.03]"
                   style={{
                     background: `conic-gradient(#22d3ee ${score * 3.6}deg, #334155 0deg)`,
                   }}
                 />
                 <div className="absolute inset-8 flex items-center justify-center rounded-full bg-slate-900 text-2xl font-black">
                   {score}
+                </div>
+                <div className="pointer-events-none absolute -bottom-10 left-1/2 w-44 -translate-x-1/2 rounded-lg border border-cyan-400/30 bg-slate-900/95 px-2 py-1 text-center text-[10px] text-cyan-200 opacity-0 shadow-lg shadow-cyan-950/40 transition-opacity duration-200 group-hover:opacity-100">
+                  Hover insight: {mood.label.toLowerCase()} • {Math.max(0, 100 - score)} pts to max hype
                 </div>
               </div>
             </div>
@@ -833,7 +842,7 @@ export default async function Home() {
               />
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-white/10 bg-slate-800 p-3">
+              <div className="rounded-xl border border-white/10 bg-slate-800 p-3 hover-lift">
                 <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
                   Pokemon Community Hype
                 </p>
@@ -841,7 +850,7 @@ export default async function Home() {
                   {communityScore}/100
                 </p>
               </div>
-              <div className="rounded-xl border border-white/10 bg-slate-800 p-3">
+              <div className="rounded-xl border border-white/10 bg-slate-800 p-3 hover-lift">
                 <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
                   Pokemon TCG Market Heat
                 </p>
@@ -850,37 +859,9 @@ export default async function Home() {
                 </p>
               </div>
             </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              {sentiments.map((sentiment) => (
-                <div
-                  key={sentiment.key}
-                  className="rounded-xl border border-white/10 bg-slate-800 p-3"
-                >
-                  <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
-                    {sentiment.label}
-                  </p>
-                  <p className="mt-1 text-2xl font-bold text-white">
-                    {sentiment.score}/100
-                  </p>
-                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cyan-300">
-                    {sentiment.tone}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {sentiment.explanation}
-                  </p>
-                </div>
-              ))}
-            </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900 p-6">
-            <Image
-              src="/images/hype-spark.svg"
-              alt="Decorative spark"
-              width={88}
-              height={88}
-              className="pointer-events-none absolute right-4 top-4 opacity-50"
-            />
+          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
             <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
               How this meter works
             </h3>
@@ -902,10 +883,33 @@ export default async function Home() {
               yearly Pokemon cycle intensity and are blended with today&apos;s
               live score.
             </p>
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              {sentiments.map((sentiment) => (
+                <div
+                  key={sentiment.key}
+                  className="rounded-xl border border-white/10 bg-slate-800 p-3 hover-lift"
+                >
+                  <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
+                    {sentiment.label}
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-white">
+                    {sentiment.score}/100
+                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cyan-300">
+                    {sentiment.tone}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {sentiment.explanation}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
+        </ScrollReveal>
 
-        <section className="rounded-3xl border border-white/10 bg-slate-900 p-6">
+        <ScrollReveal delayMs={90}>
+        <section className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
           <div className="flex items-center justify-between gap-4">
             <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
               Hype Backtracking (2005 → now)
@@ -917,20 +921,13 @@ export default async function Home() {
           </div>
           <div className="mt-4 grid gap-4 lg:grid-cols-[1.5fr_0.7fr]">
             <HypeBacktrackingChart history={history} />
-            <aside className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-4">
-              <Image
-                src="/images/hype-wave.svg"
-                alt="Decorative market wave"
-                width={360}
-                height={84}
-                className="pointer-events-none absolute -right-12 -top-8 opacity-35"
-              />
+            <aside className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-4 hover-lift">
               <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
                 Market Sidecar
               </p>
 
               <div className="mt-4 space-y-3">
-                <div className="rounded-xl border border-white/10 bg-slate-900 p-3">
+                <div className="rounded-xl border border-white/10 bg-slate-900 p-3 hover-lift">
                   <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
                     S&P 500
                   </p>
@@ -941,7 +938,7 @@ export default async function Home() {
                     level: {formatUsd(market.sp500)}
                   </p>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-slate-900 p-3">
+                <div className="rounded-xl border border-white/10 bg-slate-900 p-3 hover-lift">
                   <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
                     Bitcoin
                   </p>
@@ -963,8 +960,10 @@ export default async function Home() {
             </aside>
           </div>
         </section>
+        </ScrollReveal>
 
-        <section className="rounded-3xl border border-white/10 bg-slate-900 p-6">
+        <ScrollReveal delayMs={120}>
+        <section className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
             6 Composite Components
           </h3>
@@ -972,7 +971,7 @@ export default async function Home() {
             {indicators.map((indicator) => (
               <article
                 key={indicator.id}
-                className="rounded-2xl border border-white/10 bg-slate-800 p-4"
+                className="rounded-2xl border border-white/10 bg-slate-800 p-4 hover-lift"
               >
                 <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
                   {indicator.label}
@@ -998,10 +997,14 @@ export default async function Home() {
             ))}
           </div>
         </section>
+        </ScrollReveal>
 
-        <DayStatsCalendar />
+        <ScrollReveal delayMs={150}>
+          <DayStatsCalendar />
+        </ScrollReveal>
 
-        <section className="rounded-3xl border border-white/10 bg-slate-900 p-6">
+        <ScrollReveal delayMs={180}>
+        <section className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
             Latest Pokemon News
           </h3>
@@ -1014,7 +1017,7 @@ export default async function Home() {
               {items.slice(0, 12).map((item) => (
                 <li
                   key={`${item.link}-${item.pubDate}`}
-                  className="rounded-2xl border border-white/10 bg-slate-800 p-4"
+                  className="rounded-2xl border border-white/10 bg-slate-800 p-4 hover-lift"
                 >
                   <a
                     className="text-sm font-semibold text-cyan-300 hover:text-cyan-200"
@@ -1036,6 +1039,7 @@ export default async function Home() {
             </ul>
           )}
         </section>
+        </ScrollReveal>
       </div>
     </main>
   );

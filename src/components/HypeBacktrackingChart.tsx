@@ -23,17 +23,17 @@ function zoneForScore(score: number) {
 export default function HypeBacktrackingChart({ history }: Props) {
   const chartWidth = 940;
   const chartHeight = 250;
+  const padX = 20;
+  const padY = 18;
+  const safeWidth = chartWidth - padX * 2;
+  const safeHeight = chartHeight - padY * 2;
   const points = useMemo(() => {
-    const padX = 20;
-    const padY = 18;
-    const safeWidth = chartWidth - padX * 2;
-    const safeHeight = chartHeight - padY * 2;
     return history.map((entry, idx) => {
       const x = padX + (idx / Math.max(history.length - 1, 1)) * safeWidth;
       const y = padY + ((100 - entry.score) / 100) * safeHeight;
       return { ...entry, x, y };
     });
-  }, [history]);
+  }, [history, safeHeight, safeWidth]);
 
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
   const [activeIndex, setActiveIndex] = useState(Math.max(points.length - 1, 0));
@@ -95,6 +95,20 @@ export default function HypeBacktrackingChart({ history }: Props) {
           strokeWidth="4"
           points={polyline}
         />
+        <rect
+          x={padX}
+          y={padY}
+          width={safeWidth}
+          height={safeHeight}
+          fill="transparent"
+          onMouseMove={(event) => {
+            if (points.length <= 1) return;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const ratio = (event.clientX - bounds.left) / bounds.width;
+            const next = Math.round(Math.max(0, Math.min(1, ratio)) * (points.length - 1));
+            setActiveIndex(next);
+          }}
+        />
         {points.map((point, idx) => (
           <g key={point.year}>
             <circle
@@ -153,6 +167,9 @@ export default function HypeBacktrackingChart({ history }: Props) {
         <span>{history[Math.floor((history.length * 3) / 4)]?.year}</span>
         <span>{history[history.length - 1]?.year}</span>
       </div>
+      <p className="mt-2 text-[11px] text-slate-500">
+        Hover across the chart to inspect each year.
+      </p>
     </div>
   );
 }
