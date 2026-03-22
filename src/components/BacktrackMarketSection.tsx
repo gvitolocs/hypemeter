@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import HypeBacktrackingChart from "@/components/HypeBacktrackingChart";
+import { useMatchMedia } from "@/hooks/useMatchMedia";
+import { sliceBacktrackView } from "@/lib/sliceBacktrackView";
 import { formatGrowthPct, formatUsd, growthPctColorClass } from "@/lib/marketFormat";
 import type { MarketHighlightKey, MarketYearlyOverlay } from "@/lib/marketBacktrack";
 import {
@@ -49,6 +51,10 @@ type Props = {
   deploymentSha?: string | null;
 };
 
+/** Below `md` the chart uses the last N years so the x-axis isn’t cramped on phones. */
+const MOBILE_CHART_LAST_N_YEARS = 3;
+const MOBILE_CHART_MQ = "(max-width: 767px)";
+
 const SP500_SOURCE_NOTE: Record<NonNullable<MarketSnap["sp500Source"]>, string> = {
   "yahoo-daily": "Yahoo 1d daily",
   yahoo: "Yahoo quote",
@@ -75,6 +81,14 @@ export default function BacktrackMarketSection({
   deploymentSha,
 }: Props) {
   const [highlight, setHighlight] = useState<MarketHighlightKey | null>(null);
+  const isMobileChart = useMatchMedia(MOBILE_CHART_MQ);
+  const { history: chartHistory, marketOverlay: chartOverlay, events: chartEvents } = useMemo(
+    () =>
+      isMobileChart
+        ? sliceBacktrackView(history, marketOverlay, events, MOBILE_CHART_LAST_N_YEARS)
+        : { history, marketOverlay, events },
+    [isMobileChart, history, marketOverlay, events],
+  );
 
   const sp500Href =
     market.sp500Source === "stooq-daily" || market.sp500Source === "stooq"
@@ -95,16 +109,28 @@ export default function BacktrackMarketSection({
         <h3 className="min-w-0 shrink text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
           Hype Backtracking (2005 → now)
         </h3>
-        <p className="shrink-0 text-xs text-slate-400">
-          First year: {history[0]?.year} • Latest: {history[history.length - 1]?.year}
+        <p className="shrink-0 text-right text-xs leading-snug text-slate-400 md:text-left">
+          {isMobileChart && history.length > MOBILE_CHART_LAST_N_YEARS ? (
+            <>
+              {chartHistory[0]?.year}–{chartHistory[chartHistory.length - 1]?.year}
+              <span className="text-slate-500"> · last {MOBILE_CHART_LAST_N_YEARS} yrs</span>
+              <span className="mt-0.5 block text-[10px] text-slate-600 md:hidden">
+                Full {history[0]?.year}–{history[history.length - 1]?.year} on wider screens
+              </span>
+            </>
+          ) : (
+            <>
+              First year: {history[0]?.year} • Latest: {history[history.length - 1]?.year}
+            </>
+          )}
         </p>
       </div>
       <div className="mt-4 grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,16rem)] lg:items-stretch">
         <div className="min-w-0 self-stretch lg:min-h-0">
           <HypeBacktrackingChart
-            history={history}
-            events={events}
-            marketOverlay={marketOverlay}
+            history={chartHistory}
+            events={chartEvents}
+            marketOverlay={chartOverlay}
             highlightSeries={highlight}
           />
         </div>
