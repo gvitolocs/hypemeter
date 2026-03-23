@@ -1,5 +1,8 @@
 import { unstable_cache } from "next/cache";
-import { CARD_TRADER_HIGHLIGHT_CACHE_SEC } from "@/lib/homePageCacheConfig";
+import {
+  CARD_TRADER_HIGHLIGHT_CACHE_SEC,
+  HYPEMETER_CACHE_TAG_HOME,
+} from "@/lib/homePageCacheConfig";
 import {
   imageBytesLookLikeRaster,
   looksLikeHtmlResponse,
@@ -91,7 +94,7 @@ export async function fetchCardTraderImageBytesUncached(imageUrl: string): Promi
 }
 
 /**
- * Cached bytes per **calendar day** + URL — same file until Europe/Rome midnight.
+ * Cached bytes per **dayKey** + URL (Europe/Rome date in the key) with 15m `revalidate`.
  * `unstable_cache` must receive a **structured-clone-serializable** payload; raw `Buffer`
  * can round-trip as empty — store base64 and decode in the public helper.
  */
@@ -105,7 +108,7 @@ const getCachedCardHighlightImageInner = unstable_cache(
     };
   },
   ["card-highlight-image-bytes-v3"],
-  { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC },
+  { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC, tags: [HYPEMETER_CACHE_TAG_HOME] },
 );
 
 export async function getCachedCardHighlightImage(

@@ -111,4 +111,16 @@ https://www.cardtrader.com/uploads/blueprints/image/111169/show_pidgeotto-22-102
     expect(r!.imageUrl).toContain("(2).jpg");
     expect(r!.cardUrl).toContain("/cards/");
   });
+
+  it("parse: does not swap first row’s preview_ art for another row’s higher-scoring show_ blueprint", () => {
+    const md = `## Best Sellers
+[![a](https://www.cardtrader.com/uploads/blueprints/image/100/preview_gloom.jpg) Gloom Obsidian Flames Starting from: $2.50](https://www.cardtrader.com/en/cards/gloom-slug)
+[![b](https://www.cardtrader.com/uploads/blueprints/image/200/show_other-card.jpg) Other Card](https://www.cardtrader.com/en/cards/other-slug)
+`;
+    const r = parseCardTraderBestSellerFromText(md);
+    expect(r).not.toBeNull();
+    expect(r!.name).toContain("Gloom");
+    expect(r!.imageUrl).toContain("preview_gloom");
+    expect(r!.imageUrl).not.toContain("show_other");
+  });
 });

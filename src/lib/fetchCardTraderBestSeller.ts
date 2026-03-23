@@ -4,7 +4,10 @@
 
 import { unstable_cache } from "next/cache";
 import { cardHighlightCalendarDayKey } from "@/lib/cardHighlightCalendarDay";
-import { CARD_TRADER_HIGHLIGHT_CACHE_SEC } from "@/lib/homePageCacheConfig";
+import {
+  CARD_TRADER_HIGHLIGHT_CACHE_SEC,
+  HYPEMETER_CACHE_TAG_HOME,
+} from "@/lib/homePageCacheConfig";
 
 export type CardTraderBestSeller = {
   name: string;
@@ -69,6 +72,14 @@ function scoreCardImageCandidate(url: string): number {
   if (/\.(jpe?g|webp)(\?|$)/i.test(u)) return 25;
   if (/\.png(\?|$)/i.test(u)) return 15;
   return 5;
+}
+
+/** True when the URL is already a real card scan we should not replace with another row’s “better” blueprint. */
+function isStrongBlueprintImage(url: string): boolean {
+  const n = normalizeCardtraderAssetUrl(url);
+  if (!n || isUndesirableCardImageUrl(n)) return false;
+  if (!looksLikeCompleteBlueprintOrImageUrl(n)) return false;
+  return scoreCardImageCandidate(n) > 0;
 }
 
 /** Prefer blueprint card art over hub fallbacks when multiple <img> exist (e.g. back + front flipper). */
@@ -238,17 +249,20 @@ export function parseCardTraderBestSellerFromText(fullText: string): CardTraderB
     }
   }
 
-  // 2) First blueprint URL in section + card URL (Jina markdown with preview_…(2).jpg)
+  // 2) Blueprint that appears **before** the first card link + that link (avoid mixing rows)
   if (!result) {
-    const mdBlueprint = section.match(new RegExp(BLUEPRINT_HTTPS_SOURCE, "i"));
     const mdLink = section.match(
       /(https:\/\/(?:www\.)?cardtrader\.com\/[^\s]*\/cards\/[^\s]*|\/(?:en\/)?cards\/[^\s]*)/i,
     );
-    if (mdBlueprint?.[0] && mdLink?.[1]) {
+    if (mdLink?.[1] && mdLink.index !== undefined) {
       const cardUrl = normalizeCardtraderAssetUrl(mdLink[1]);
-      if (looksLikeCardProductUrl(cardUrl)) {
-        dbg("match: blueprint url + card url");
-        result = buildResult(mdBlueprint[0], section.slice(0, 800), cardUrl, "Best seller");
+      const linkStart = mdLink.index;
+      const beforeFirstLink = section.slice(0, linkStart);
+      const mdBlueprint = beforeFirstLink.match(new RegExp(BLUEPRINT_HTTPS_SOURCE, "i"));
+      if (mdBlueprint?.[0] && looksLikeCardProductUrl(cardUrl)) {
+        dbg("match: blueprint before first card url");
+        const labelSlice = section.slice(linkStart, Math.min(linkStart + 500, section.length));
+        result = buildResult(mdBlueprint[0], labelSlice, cardUrl, "Best seller");
       }
     }
   }
@@ -294,9 +308,15 @@ export function parseCardTraderBestSellerFromText(fullText: string): CardTraderB
   ];
   const bestImage = pickBestCardImageUrl(allImageCandidates);
 
+  /**
+   * Fill missing / fallback images only. Do **not** replace a row’s real blueprint with a
+   * higher-scoring blueprint from another listing (e.g. `show_` vs `preview_` on a different card).
+   */
   if (result && bestImage) {
     const cur = result.imageUrl ? normalizeCardtraderAssetUrl(result.imageUrl) : "";
-    if (!cur || scoreCardImageCandidate(bestImage) > scoreCardImageCandidate(cur)) {
+    if (!cur) {
+      result = { ...result, imageUrl: bestImage };
+    } else if (!isStrongBlueprintImage(cur)) {
       result = { ...result, imageUrl: bestImage };
     }
   } else if (result && !result.imageUrl && bestImage) {
@@ -347,10 +367,10 @@ const fetchCardTraderPokemonBestSellerCached = unstable_cache(
     }
   },
   ["cardtrader-pokemon-best-seller-v2"],
-  { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC },
+  { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC, tags: [HYPEMETER_CACHE_TAG_HOME] },
 );
 
-/** Parsed best-seller row; Jina fetch at most once per **calendar day** (Europe/Rome), then Data Cache. */
+/** Parsed best-seller row; cached with home TTL (15m) + `revalidateTag` from cron. */
 export async function fetchCardTraderPokemonBestSeller(): Promise<CardTraderBestSeller | null> {
   return fetchCardTraderPokemonBestSellerCached(cardHighlightCalendarDayKey());
 }

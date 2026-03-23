@@ -67,7 +67,7 @@ export async function getCardHighlightImageDebugPayload() {
       bytesLookLikeImage: upstream.ok ? upstream.rasterMagicOk : false,
     },
     hints: [
-      "Cache is keyed by calendar day (Europe/Rome) + URL — same art until local midnight, then new Jina parse.",
+      "Image proxy cache: day key (Europe/Rome) + URL; TTL 15m + cron revalidation.",
       "GET /api/card-highlight-image returns X-Card-Highlight-Day and X-Card-Image-Host when OK.",
       "If upstream fails with HTTP 403, CardTrader may block datacenter IPs.",
     ],

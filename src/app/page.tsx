@@ -8,7 +8,7 @@ import { fetchMarketYearlyOverlay } from "@/lib/marketBacktrack";
 import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
-import { HOME_PAGE_DATA_CACHE_TTL_SEC } from "@/lib/homePageCacheConfig";
+import { HOME_PAGE_DATA_CACHE_TTL_SEC, HYPEMETER_CACHE_TAG_HOME } from "@/lib/homePageCacheConfig";
 import { logTimingTotal, timedAsync } from "@/lib/serverTiming";
 import Image from "next/image";
 import { unstable_cache } from "next/cache";
@@ -2043,6 +2043,7 @@ async function loadHomePageDataUncached() {
 
 export const loadHomePageData = unstable_cache(loadHomePageDataUncached, ["hypemeter-home-v1"], {
   revalidate: HOME_PAGE_DATA_CACHE_TTL_SEC,
+  tags: [HYPEMETER_CACHE_TAG_HOME],
 });
 
 /** Uncached pipeline — use from `/debug` timing or when bypassing Data Cache. */
