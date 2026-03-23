@@ -5,9 +5,9 @@ export const runtime = "nodejs";
 
 /**
  * Warms Next.js Data Cache for the home pipeline (news, Card Highlight, etc.).
- * Call with `Authorization: Bearer $CRON_SECRET` (set in Vercel env).
- * Vercel Hobby cannot schedule `*/15` crons — use an external cron or GitHub Actions, or
- * rely on ISR (15m `revalidate` on home); Pro can add `crons` in `vercel.json`.
+ * Call with Authorization: Bearer CRON_SECRET (set in Vercel env).
+ * Vercel Hobby cannot schedule frequent crons — use external cron or GitHub Actions, or
+ * rely on ISR (15 minute revalidate on home); Pro can add crons in vercel.json.
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;

@@ -54,7 +54,9 @@ export function CardTraderHighlightImage({ imageUrl, alt, width, height, classNa
     );
   }
 
-  const src = mode === "proxy" ? "/api/card-highlight-image" : direct;
+  /** Must match SSR `imageUrl` or the proxy can fetch a different “current best seller” than the label. */
+  const proxySrc = `/api/card-highlight-image?url=${encodeURIComponent(direct)}`;
+  const src = mode === "proxy" ? proxySrc : direct;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element -- proxy + direct CardTrader URLs
