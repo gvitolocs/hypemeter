@@ -1102,8 +1102,8 @@ function summarizeHype(
   const coverage = clamp01(Math.log10(items.length + 1) / Math.log10(26));
   const sourceSpread = clamp01((uniqueSources - 1) / 7);
   const recencyCoverage = hasNews ? clamp01(recent24 / Math.max(3, items.length * 0.8)) : 0;
-  const confidence = hasNews ? clamp01(0.34 + coverage * 0.36 + sourceSpread * 0.3) : 0;
-  const activityBoost = Math.min(11, Math.log10(recent24 + 1) * 9);
+  const confidence = hasNews ? clamp01(0.32 + coverage * 0.36 + sourceSpread * 0.32) : 0;
+  const activityBoost = Math.min(13, Math.log10(recent24 + 1) * 10.5);
 
   // "Density over headlines" keeps values comparable regardless of news volume.
   const availabilityDensity = hasNews ? availabilityHits / Math.max(3, items.length * 1.25) : 0;
@@ -1113,45 +1113,69 @@ function summarizeHype(
   // scale by confidence (coverage + source diversity), avoiding very low locked values.
   const availabilityRaw =
     50 +
-    Math.tanh((availabilityDensity - 0.46) * 3.4) * 30 +
-    recencyCoverage * 9 +
-    activityBoost * 0.45;
+    Math.tanh((availabilityDensity - 0.45) * 4.0) * 34 +
+    recencyCoverage * 11 +
+    activityBoost * 0.5;
   const availabilityPressureScore = hasNews
-    ? clampScore(50 + (availabilityRaw - 50) * confidence)
+    ? clampScore(50 + (availabilityRaw - 50) * (0.52 + confidence * 0.62))
     : 34;
 
   const productStressRaw =
     48 +
-    Math.tanh((productStressDensity - 0.4) * 3.6) * 31 +
-    Math.tanh((availabilityDensity - 0.52) * 2.2) * 8 +
-    recencyCoverage * 8 +
-    activityBoost * 0.4;
+    Math.tanh((productStressDensity - 0.38) * 4.2) * 35 +
+    Math.tanh((availabilityDensity - 0.5) * 2.6) * 10 +
+    recencyCoverage * 10 +
+    activityBoost * 0.45;
   const productStressScore = hasNews
-    ? clampScore(50 + (productStressRaw - 50) * confidence)
+    ? clampScore(50 + (productStressRaw - 50) * (0.5 + confidence * 0.66))
     : 32;
 
-  const activityFloor = clampScore(12 + (recent24 / 28) * 24);
+  const activityFloor = clampScore(10 + (recent24 / 28) * 28);
   const socialSearchBlend = clampScore(
-    external.searchInterest * 0.76 + external.socialPulse.momentumScore * 0.24,
+    external.searchInterest * 0.7 + external.socialPulse.momentumScore * 0.3,
   );
-  const searchInterestScore = hasNews
-    ? Math.max(socialSearchBlend, Math.min(activityFloor, 52))
+  const searchSwing = hasNews
+    ? clampScore(
+        socialSearchBlend +
+          (recencyCoverage - 0.52) * 22 +
+          (coverage - 0.45) * 16 +
+          (external.socialPulse.momentumScore - 50) * 0.12,
+      )
     : socialSearchBlend;
+  const searchInterestScore = hasNews
+    ? Math.max(searchSwing, Math.min(activityFloor, 55))
+    : socialSearchBlend;
+  const marketMomentumScore = clampScore(
+    50 + (external.marketMomentum - 50) * 1.18 + (external.socialPulse.momentumScore - 50) * 0.12,
+  );
   const releaseCatalystScore = clampScore(
-    external.eventCatalyst * 0.84 + external.socialPulse.momentumScore * 0.16,
+    external.eventCatalyst * 0.78 +
+      external.socialPulse.momentumScore * 0.14 +
+      (recencyCoverage - 0.5) * 16,
   );
   const communitySentimentScore = clampScore(
-    external.communitySentiment * 0.64 +
-      external.socialPulse.momentumScore * 0.2 +
-      external.socialPulse.breadthScore * 0.16,
+    external.communitySentiment * 0.58 +
+      external.socialPulse.momentumScore * 0.22 +
+      external.socialPulse.breadthScore * 0.2,
   );
+
+  // Increase movement around the neutral center so multi-day values do not stick near ~50.
+  const amplifyFromNeutral = (value: number, multiplier = 1.22) =>
+    clampScore(50 + (value - 50) * multiplier);
+
+  const searchInterestResponsive = amplifyFromNeutral(searchInterestScore, 1.2);
+  const marketMomentumResponsive = amplifyFromNeutral(marketMomentumScore, 1.2);
+  const availabilityResponsive = amplifyFromNeutral(availabilityPressureScore, 1.28);
+  const releaseResponsive = amplifyFromNeutral(releaseCatalystScore, 1.18);
+  const communityResponsive = amplifyFromNeutral(communitySentimentScore, 1.15);
+  const productStressResponsive = amplifyFromNeutral(productStressScore, 1.26);
 
   const components: SignalComponent[] = [
     {
       id: "search_interest",
       label: "Search Interest",
-      weight: 0.3,
-      score: searchInterestScore,
+      weight: 0.26,
+      score: searchInterestResponsive,
       description: "Demand driver from Google search intensity blended with social momentum.",
       group: "community",
     },
@@ -1159,39 +1183,39 @@ function summarizeHype(
       id: "market_momentum",
       label: "Market Momentum",
       weight: 0.2,
-      score: external.marketMomentum,
+      score: marketMomentumResponsive,
       description: "PriceCharting momentum proxy on cards/sealed assets.",
       group: "market",
     },
     {
       id: "availability_pressure",
       label: "Availability Pressure",
-      weight: 0.17,
-      score: availabilityPressureScore,
+      weight: 0.18,
+      score: availabilityResponsive,
       description: "Confidence-adjusted sellout/preorder scarcity density.",
       group: "market",
     },
     {
       id: "release_catalyst",
       label: "Release/Event Catalyst",
-      weight: 0.13,
-      score: releaseCatalystScore,
+      weight: 0.14,
+      score: releaseResponsive,
       description: "Boost from reveals/releases with social acceleration confirmation.",
       group: "community",
     },
     {
       id: "community_sentiment",
       label: "Community Sentiment",
-      weight: 0.1,
-      score: communitySentimentScore,
+      weight: 0.11,
+      score: communityResponsive,
       description: "Reddit tone blended with cross-platform participation breadth.",
       group: "community",
     },
     {
       id: "product_stress",
       label: "Product Stress / Queue",
-      weight: 0.1,
-      score: productStressScore,
+      weight: 0.11,
+      score: productStressResponsive,
       description: "Operational stress density (queues, delays, restrictions).",
       group: "market",
     },
@@ -2338,9 +2362,9 @@ export default async function Home() {
                   </span>
                 </summary>
                 <p className="mt-2 text-[11px] text-slate-300">
-                  Composite index with 6 weighted components: Search Interest (30%),
-                  Market Momentum (20%), Availability Pressure (17%), Event Catalyst (13%),
-                  Community Sentiment (10%), Product Stress (10%).
+                  Composite index with 6 weighted components: Search Interest (26%),
+                  Market Momentum (20%), Availability Pressure (18%), Event Catalyst (14%),
+                  Community Sentiment (11%), Product Stress (11%).
                 </p>
               </details>
             </div>
