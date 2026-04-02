@@ -1,10 +1,10 @@
 /**
  * Legacy Yahoo-shaped quote parsing (kept for unit tests) + Stooq CSV helpers for the Market Sidecar.
- * Live fetches use Stooq / CoinGecko / Binance only — see `fetchMarketSnapshot.ts`.
+ * Live fetches use Stooq first, with Yahoo/CoinGecko/Binance fallbacks — see `fetchMarketSnapshot.ts`.
  */
 
 /** Where S&P numbers came from (sidecar transparency). */
-export type Sp500QuoteSource = "stooq" | "stooq-daily";
+export type Sp500QuoteSource = "stooq" | "stooq-daily" | "yahoo";
 
 /** Where BTC numbers came from. */
 export type BitcoinQuoteSource = "stooq" | "stooq-daily" | "coingecko" | "binance";

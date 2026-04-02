@@ -31,7 +31,7 @@ type MarketSnap = {
   nintendoGrowthPct: number | null;
   updatedAt: string | null;
   nintendoSource: "adr" | "tokyo" | null;
-  sp500Source: "stooq" | "stooq-daily" | null;
+  sp500Source: "stooq" | "stooq-daily" | "yahoo" | null;
   bitcoinSource: "stooq" | "stooq-daily" | "coingecko" | "binance" | null;
 };
 
@@ -142,6 +142,7 @@ function expandToMonthlyWindow(
 const SP500_SOURCE_NOTE: Record<NonNullable<MarketSnap["sp500Source"]>, string> = {
   stooq: "Stooq",
   "stooq-daily": "Stooq daily",
+  yahoo: "Yahoo",
 };
 
 const BTC_SOURCE_NOTE: Record<NonNullable<MarketSnap["bitcoinSource"]>, string> = {

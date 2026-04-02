@@ -36,6 +36,10 @@ export const COINGECKO_FETCH: RequestInit = {
 };
 const BINANCE_BTC_KLINES_URL =
   "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=2";
+const YAHOO_GSPC_CHART_URL =
+  "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d";
+const YAHOO_NTDOY_CHART_URL =
+  "https://query1.finance.yahoo.com/v8/finance/chart/NTDOY?range=5d&interval=1d";
 const YAHOO_7974_TOKYO_CHART_URL =
   "https://query1.finance.yahoo.com/v8/finance/chart/7974.T?range=5d&interval=1d";
 
@@ -184,6 +188,30 @@ async function fetchBitcoinBinanceDailyLastTwo(): Promise<{
   }
 }
 
+async function fetchYahooDailyLastTwoByChartUrl(url: string): Promise<{
+  price: number;
+  previousClose: number;
+  growthPct: number;
+} | null> {
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      headers: { ...QUOTE_HEADERS },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as unknown;
+    const two = parseYahooChartLastTwoCloses(json);
+    if (!(two.last && two.prev && two.last > 0 && two.prev > 0)) return null;
+    return {
+      price: two.last,
+      previousClose: two.prev,
+      growthPct: ((two.last - two.prev) / two.prev) * 100,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchNintendoTokyoUsdFromStooq7974(): Promise<{
   price: number;
   previousClose: number;
@@ -306,6 +334,15 @@ async function resolveSp500Metrics(spx: {
     sp500Source = "stooq-daily";
   }
 
+  if (sp500Incomplete(sp500, sp500GrowthPct)) {
+    const yahoo = await fetchYahooDailyLastTwoByChartUrl(YAHOO_GSPC_CHART_URL);
+    if (yahoo) {
+      sp500 = yahoo.price;
+      sp500GrowthPct = yahoo.growthPct;
+      sp500Source = "yahoo";
+    }
+  }
+
   return { sp500, sp500GrowthPct, sp500Source };
 }
 
@@ -414,6 +451,18 @@ async function resolveNintendoMetrics(): Promise<{
     nintendoChangeAbs = absChangeFromSessionPct(ntd.close, ntd.growthPct);
     nintendoChangeCurrency = nintendoChangeAbs !== null ? "USD" : null;
     nintendoSource = "adr";
+  }
+
+  if (nintendoIncomplete({ nintendo, nintendoGrowthPct, nintendoPreviousClose })) {
+    const adrYahoo = await fetchYahooDailyLastTwoByChartUrl(YAHOO_NTDOY_CHART_URL);
+    if (adrYahoo) {
+      nintendo = adrYahoo.price;
+      nintendoPreviousClose = adrYahoo.previousClose;
+      nintendoGrowthPct = adrYahoo.growthPct;
+      nintendoChangeAbs = adrYahoo.price - adrYahoo.previousClose;
+      nintendoChangeCurrency = "USD";
+      nintendoSource = "adr";
+    }
   }
 
   if (nintendoIncomplete({ nintendo, nintendoGrowthPct, nintendoPreviousClose })) {

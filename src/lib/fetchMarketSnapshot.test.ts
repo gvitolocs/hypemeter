@@ -260,4 +260,59 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
     expect(snap.nintendoChangeCurrency).toBe("USD");
     expect(snap.nintendoChangeAbs).not.toBeNull();
   });
+
+  it("uses Yahoo chart fallback for S&P500 and Nintendo when Stooq daily paths are empty", async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+
+      if (url.includes("query1.finance.yahoo.com/v8/finance/chart/") && url.includes("GSPC")) {
+        return jsonRes({
+          chart: {
+            result: [
+              {
+                indicators: { quote: [{ close: [6500, 6571.1] }] },
+              },
+            ],
+          },
+        });
+      }
+      if (url.includes("query1.finance.yahoo.com/v8/finance/chart/NTDOY")) {
+        return jsonRes({
+          chart: {
+            result: [
+              {
+                indicators: { quote: [{ close: [14.44, 14.22] }] },
+              },
+            ],
+          },
+        });
+      }
+      if (url.includes("q/d/l") && (url.includes("%5Espx") || url.includes("btcusd") || url.includes("ntdoy"))) {
+        return textRes("");
+      }
+      if (url.startsWith(STOOQ_SP500)) {
+        return textRes("");
+      }
+      if (url.startsWith(STOOQ_BTC)) {
+        return textRes("BTCUSD,20260402,171032,49000,50000,48000,50000,,");
+      }
+      if (url.includes("q/l/?s=ntdoy.us")) {
+        return textRes("");
+      }
+      if (url.includes("q/d/l") && url.includes("7974.jp")) {
+        return textRes("");
+      }
+      if (url.includes("q/l/?s=usdjpy")) {
+        return textRes("");
+      }
+      throw new Error(`unexpected yahoo fallback fetch: ${url}`);
+    }) as typeof fetch;
+
+    const snap = await fetchMarketSnapshot();
+    expect(snap.sp500).toBe(6571.1);
+    expect(snap.sp500Source).toBe("yahoo");
+    expect(snap.nintendo).toBe(14.22);
+    expect(snap.nintendoPreviousClose).toBe(14.44);
+    expect(snap.nintendoSource).toBe("adr");
+  });
 });
