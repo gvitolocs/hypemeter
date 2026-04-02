@@ -108,6 +108,24 @@ function ensureSchemaDaily(db: Database.Database) {
       payload_json TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS pokemon_catalog_name (
+      name TEXT PRIMARY KEY,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS pokemon_catalog_alias (
+      alias TEXT PRIMARY KEY,
+      canonical_name TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS pokemon_profile (
+      lookup_key TEXT PRIMARY KEY,
+      pokemon_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      image TEXT,
+      types_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pokemon_profile_pokemon_id ON pokemon_profile(pokemon_id);
   `);
 }
 
@@ -240,6 +258,120 @@ export function upsertPokemonDayBundleToDb(dayKey: string, payload: unknown) {
       payload_json = excluded.payload_json,
       updated_at = excluded.updated_at
   `).run(dayKey, JSON.stringify(payload), new Date().toISOString());
+}
+
+export function readPokemonCatalogSnapshotFromDb():
+  | { names: string[]; aliases: Array<[alias: string, canonical: string]> }
+  | null {
+  const db = getDb("daily");
+  const names = db
+    .prepare("SELECT name FROM pokemon_catalog_name ORDER BY name ASC")
+    .all() as Array<{ name: string }>;
+  if (names.length === 0) return null;
+  const aliases = db
+    .prepare("SELECT alias, canonical_name FROM pokemon_catalog_alias ORDER BY alias ASC")
+    .all() as Array<{ alias: string; canonical_name: string }>;
+  return {
+    names: names.map((row) => row.name),
+    aliases: aliases.map((row) => [row.alias, row.canonical_name]),
+  };
+}
+
+export function replacePokemonCatalogSnapshotInDb(args: {
+  names: string[];
+  aliases: Array<[alias: string, canonical: string]>;
+}) {
+  const db = getDb("daily");
+  const now = new Date().toISOString();
+  const insertName = db.prepare(`
+    INSERT INTO pokemon_catalog_name (name, updated_at)
+    VALUES (?, ?)
+  `);
+  const insertAlias = db.prepare(`
+    INSERT INTO pokemon_catalog_alias (alias, canonical_name, updated_at)
+    VALUES (?, ?, ?)
+  `);
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM pokemon_catalog_name").run();
+    db.prepare("DELETE FROM pokemon_catalog_alias").run();
+    for (const name of args.names) insertName.run(name, now);
+    for (const [alias, canonical] of args.aliases) insertAlias.run(alias, canonical, now);
+  });
+  tx();
+}
+
+type PokemonProfileRecord = {
+  id: number;
+  name: string;
+  image: string | null;
+  types: string[];
+};
+
+export function readPokemonProfileFromDb(identifier: string | number): PokemonProfileRecord | null {
+  const db = getDb("daily");
+  const idStr = String(identifier).trim().toLowerCase();
+  const isNumericId = /^\d+$/.test(idStr);
+  const row = isNumericId
+    ? (db
+        .prepare("SELECT pokemon_id, name, image, types_json FROM pokemon_profile WHERE pokemon_id = ? LIMIT 1")
+        .get(Number(idStr)) as
+        | { pokemon_id: number; name: string; image: string | null; types_json: string }
+        | undefined)
+    : (db
+        .prepare("SELECT pokemon_id, name, image, types_json FROM pokemon_profile WHERE lookup_key = ?")
+        .get(idStr) as { pokemon_id: number; name: string; image: string | null; types_json: string } | undefined);
+  if (!row) return null;
+  try {
+    const types = JSON.parse(row.types_json) as unknown;
+    if (!Array.isArray(types)) return null;
+    return {
+      id: row.pokemon_id,
+      name: row.name,
+      image: row.image ?? null,
+      types: types.filter((t): t is string => typeof t === "string"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function upsertPokemonProfileToDb(args: {
+  keys: string[];
+  profile: PokemonProfileRecord;
+}) {
+  const db = getDb("daily");
+  const now = new Date().toISOString();
+  const uniqueKeys = Array.from(
+    new Set(
+      args.keys
+        .map((k) => k.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+  if (uniqueKeys.length === 0) return;
+  const stmt = db.prepare(`
+    INSERT INTO pokemon_profile (lookup_key, pokemon_id, name, image, types_json, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(lookup_key) DO UPDATE SET
+      pokemon_id = excluded.pokemon_id,
+      name = excluded.name,
+      image = excluded.image,
+      types_json = excluded.types_json,
+      updated_at = excluded.updated_at
+  `);
+  const tx = db.transaction(() => {
+    for (const key of uniqueKeys) {
+      stmt.run(
+        key,
+        args.profile.id,
+        args.profile.name,
+        args.profile.image,
+        JSON.stringify(args.profile.types),
+        now,
+      );
+    }
+  });
+  tx();
 }
 
 export function readRuntimeSnapshotFromDb<T>(key: string): T | null {

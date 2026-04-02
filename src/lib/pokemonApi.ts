@@ -1,12 +1,14 @@
 import "server-only";
 
-import { readRuntimeSnapshotFromDb, upsertRuntimeSnapshotToDb } from "@/lib/staticDataDb";
+import {
+  readPokemonCatalogSnapshotFromDb,
+  readPokemonProfileFromDb,
+  replacePokemonCatalogSnapshotInDb,
+  upsertPokemonProfileToDb,
+} from "@/lib/staticDataDb";
 
 const POKEAPI_LIST_URL = "https://pokeapi.co/api/v2/pokemon?limit=2000";
 const POKEAPI_POKEMON_URL = "https://pokeapi.co/api/v2/pokemon/";
-const POKEMON_CATALOG_RUNTIME_KEY = "pokemon_catalog_v1";
-const POKEMON_PROFILE_RUNTIME_PREFIX = "pokemon_profile_v1:";
-
 type CatalogSnapshot = {
   names: string[];
   aliases: Array<[alias: string, canonical: string]>;
@@ -107,7 +109,7 @@ function buildCatalogSnapshot(names: string[]): CatalogSnapshot {
 export async function fetchPokemonNameCatalog(): Promise<string[]> {
   if (memoNames) return memoNames;
 
-  const cached = readRuntimeSnapshotFromDb<CatalogSnapshot>(POKEMON_CATALOG_RUNTIME_KEY);
+  const cached = readPokemonCatalogSnapshotFromDb();
   if (cached?.names?.length) {
     return cacheCatalog(cached);
   }
@@ -121,7 +123,7 @@ export async function fetchPokemonNameCatalog(): Promise<string[]> {
     const payload = (await res.json()) as { results?: Array<{ name?: string }> };
     const names = (payload.results ?? []).map((entry) => entry.name ?? "").filter(Boolean);
     const snapshot = buildCatalogSnapshot(names);
-    upsertRuntimeSnapshotToDb(POKEMON_CATALOG_RUNTIME_KEY, snapshot);
+    replacePokemonCatalogSnapshotInDb(snapshot);
     return cacheCatalog(snapshot);
   } catch {
     return [];
@@ -182,8 +184,8 @@ export function rankPokemonMatchesFromSources(
 }
 
 export async function fetchPokemonByIdentifier(identifier: string | number): Promise<PokemonProfile | null> {
-  const cacheKey = `${POKEMON_PROFILE_RUNTIME_PREFIX}${String(identifier).toLowerCase()}`;
-  const cached = readRuntimeSnapshotFromDb<PokemonProfile>(cacheKey);
+  const cacheKey = String(identifier).toLowerCase();
+  const cached = readPokemonProfileFromDb(cacheKey);
   if (cached?.id && cached.name) return cached;
 
   try {
@@ -207,7 +209,10 @@ export async function fetchPokemonByIdentifier(identifier: string | number): Pro
         .filter(Boolean)
         .map((name) => titleCase(name)),
     };
-    upsertRuntimeSnapshotToDb(cacheKey, profile);
+    upsertPokemonProfileToDb({
+      keys: [cacheKey, String(profile.id), payload.name.toLowerCase(), profile.name.toLowerCase()],
+      profile,
+    });
     return profile;
   } catch {
     return null;

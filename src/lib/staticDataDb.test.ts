@@ -4,13 +4,17 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   readBacktrackBaselineFromDb,
+  readPokemonCatalogSnapshotFromDb,
   readPokemonDayBundleFromDb,
+  readPokemonProfileFromDb,
   readRuntimeSnapshotFromDb,
   readStaticCpiYoYFromDb,
   readStooqMonthlyCloseFromDb,
   readStooqYearlyCloseFromDb,
+  replacePokemonCatalogSnapshotInDb,
   resetStaticDataDbForTests,
   upsertPokemonDayBundleToDb,
+  upsertPokemonProfileToDb,
   upsertRuntimeSnapshotToDb,
   upsertStooqMonthlyClose,
   upsertStooqYearlyClose,
@@ -114,5 +118,30 @@ describe("staticDataDb", () => {
     expect(snap?.sp500).toBe(5100.1);
     expect(snap?.bitcoin).toBe(70000.5);
     expect(fs.existsSync(path.join(dir, "hypemeter-runtime.db"))).toBe(true);
+  });
+
+  it("stores pokemon catalog and profiles in SQL tables", () => {
+    const dir = withFreshDbDir();
+    replacePokemonCatalogSnapshotInDb({
+      names: ["pikachu", "mr-mime"],
+      aliases: [
+        ["pikachu", "pikachu"],
+        ["mr mime", "mr-mime"],
+      ],
+    });
+    upsertPokemonProfileToDb({
+      keys: ["pikachu", "25"],
+      profile: { id: 25, name: "Pikachu", image: "https://img/pika.png", types: ["Electric"] },
+    });
+
+    const catalog = readPokemonCatalogSnapshotFromDb();
+    const bySlug = readPokemonProfileFromDb("pikachu");
+    const byId = readPokemonProfileFromDb(25);
+
+    expect(catalog?.names).toContain("pikachu");
+    expect(catalog?.aliases).toContainEqual(["mr mime", "mr-mime"]);
+    expect(bySlug?.name).toBe("Pikachu");
+    expect(byId?.id).toBe(25);
+    expect(fs.existsSync(path.join(dir, "hypemeter-daily.db"))).toBe(true);
   });
 });
