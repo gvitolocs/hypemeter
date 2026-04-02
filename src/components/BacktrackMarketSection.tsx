@@ -304,11 +304,10 @@ export default function BacktrackMarketSection({
               <p
                 className={`text-xl font-bold tabular-nums leading-tight sm:text-2xl ${growthPctColorClass(market.nintendoGrowthPct, "nintendo")}`}
               >
-                {formatUsd(market.nintendo)}
+                {formatGrowthPct(market.nintendoGrowthPct)}
               </p>
               <p className="text-[11px] leading-snug text-slate-500">
                 {nintendoChangeDisplay !== "N/A" ? `${nintendoChangeDisplay} · ` : ""}
-                {market.nintendoGrowthPct !== null ? `${formatGrowthPct(market.nintendoGrowthPct)} · ` : ""}
                 level: {formatUsd(market.nintendo)}
                 {market.nintendoSource === "tokyo" ? " (USD est.)" : ""}
                 {market.nintendoPreviousClose !== null ? (

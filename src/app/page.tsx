@@ -147,6 +147,10 @@ const PRICECHARTING_ASSETS = [
   "https://www.pricecharting.com/game/pokemon-scarlet-&-violet-prismatic-evolutions/booster-box",
 ];
 
+const MARKET_MOMENTUM_CACHE_KEY = "market_momentum_score_v1";
+const MARKET_MOMENTUM_REFRESH_MS = 60 * 60 * 1000;
+let marketMomentumRefreshInFlight: Promise<void> | null = null;
+
 const blockedSourceHints = [
   "hotelier.com.py",
   "propertyroom",
@@ -946,23 +950,30 @@ async function fetchSearchInterestStats(items: NewsItem[] = []): Promise<SearchI
   }
 }
 
-// Approximate card market momentum from PriceCharting, with market-based fallback.
-async function fetchMarketMomentumScore(marketFallback?: MarketSnapshot) {
-  const scoreFromMacroFallback = () => {
-    if (!marketFallback) return 46;
-    const btc = marketFallback.bitcoinGrowthPct;
-    const spx = marketFallback.sp500GrowthPct;
-    if (btc === null && spx === null) return 46;
-    const btcSignal = btc === null ? 0 : Math.tanh(btc / 3);
-    const spxSignal = spx === null ? 0 : Math.tanh(spx / 1.5);
-    const blended = btcSignal * 0.65 + spxSignal * 0.35;
-    return clampScore(50 + blended * 28);
-  };
+function scoreMarketMomentumFromMacroFallback(marketFallback?: MarketSnapshot) {
+  if (!marketFallback) return 46;
+  const btc = marketFallback.bitcoinGrowthPct;
+  const spx = marketFallback.sp500GrowthPct;
+  if (btc === null && spx === null) return 46;
+  const btcSignal = btc === null ? 0 : Math.tanh(btc / 3);
+  const spxSignal = spx === null ? 0 : Math.tanh(spx / 1.5);
+  const blended = btcSignal * 0.65 + spxSignal * 0.35;
+  return clampScore(50 + blended * 28);
+}
 
+function readCachedMarketMomentumScore(): { score: number; updatedAtMs: number } | null {
+  const row = readRuntimeSnapshotFromDb<{ score?: number; updatedAtMs?: number }>(MARKET_MOMENTUM_CACHE_KEY);
+  const score = row?.score;
+  const updatedAtMs = row?.updatedAtMs;
+  if (!Number.isFinite(score) || !Number.isFinite(updatedAtMs)) return null;
+  return { score: score as number, updatedAtMs: updatedAtMs as number };
+}
+
+async function fetchMarketMomentumScoreLive(marketFallback?: MarketSnapshot): Promise<number> {
   try {
     const pages = await Promise.all(
       PRICECHARTING_ASSETS.map((url) =>
-        fetch(url, { next: { revalidate: 3600 } })
+        fetch(url, { next: { revalidate: 3600 }, signal: AbortSignal.timeout(3500) })
           .then((res) => (res.ok ? res.text() : ""))
           .catch(() => ""),
       ),
@@ -978,7 +989,7 @@ async function fetchMarketMomentumScore(marketFallback?: MarketSnapshot) {
         changes.push(pctChange);
       }
     }
-    if (changes.length === 0) return scoreFromMacroFallback();
+    if (changes.length === 0) return scoreMarketMomentumFromMacroFallback(marketFallback);
 
     const positiveRatio =
       changes.filter((delta) => delta > 0).length / Math.max(1, changes.length);
@@ -993,8 +1004,37 @@ async function fetchMarketMomentumScore(marketFallback?: MarketSnapshot) {
     const score = 50 + directional * (18 + intensity * 16) + (positiveRatio - 0.5) * 18;
     return clampScore(score);
   } catch {
-    return scoreFromMacroFallback();
+    return scoreMarketMomentumFromMacroFallback(marketFallback);
   }
+}
+
+/**
+ * Return immediately from runtime cache (or macro fallback), then refresh PriceCharting
+ * in background at most once per hour. This keeps first paint fast.
+ */
+async function fetchMarketMomentumScore(marketFallback?: MarketSnapshot) {
+  const now = Date.now();
+  const cached = readCachedMarketMomentumScore();
+  const immediate = cached?.score ?? scoreMarketMomentumFromMacroFallback(marketFallback);
+  const stale = !cached || now - cached.updatedAtMs >= MARKET_MOMENTUM_REFRESH_MS;
+
+  if (stale && marketMomentumRefreshInFlight === null) {
+    marketMomentumRefreshInFlight = (async () => {
+      try {
+        const live = await fetchMarketMomentumScoreLive(marketFallback);
+        upsertRuntimeSnapshotToDb(MARKET_MOMENTUM_CACHE_KEY, {
+          score: live,
+          updatedAtMs: Date.now(),
+        });
+      } catch {
+        /* keep last cached value */
+      } finally {
+        marketMomentumRefreshInFlight = null;
+      }
+    })();
+  }
+
+  return immediate;
 }
 
 // Detect catalyst intensity from Pokemon.com news language.
@@ -2163,7 +2203,10 @@ export default async function Home() {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <p className="text-xs text-slate-400">Updated (UTC): {updatedAt}</p>
                   <HomeReloadButton />
-                  <Link href="/about" className="text-xs text-cyan-300 underline underline-offset-2">
+                  <Link
+                    href="/about"
+                    className="inline-flex items-center rounded-md border border-cyan-400/35 bg-cyan-500/10 px-2.5 py-1 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-300/55 hover:bg-cyan-500/20"
+                  >
                     About
                   </Link>
                 </div>

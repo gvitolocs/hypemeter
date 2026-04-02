@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "About page for the Pokemon Awesome-style information, sources, copyright notice, and privacy policy.",
+    "About Monmeter: how the Pokemon hype score is built, where data comes from, and how caching/updates work.",
   alternates: {
     canonical: "/about",
   },
@@ -28,11 +28,11 @@ export default function AboutPage() {
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">
       <div className="mx-auto w-full max-w-5xl">
         <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30">
-          <p className="text-sm font-semibold tracking-[0.08em] text-fuchsia-300">POKEMONAWESOME!</p>
-          <p className="mt-2 text-xs text-slate-400">PokemonsCompareStatisticsBookmarks</p>
-          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Main Menu</p>
+          <p className="text-sm font-semibold tracking-[0.08em] text-fuchsia-300">MONMETER</p>
+          <p className="mt-2 text-xs text-slate-400">Pokemon Fear &amp; Greed Remix</p>
+          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Sections</p>
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            {["Pokemons", "Compare", "Statistics", "Bookmarks"].map((item) => (
+            {["Live Hype", "Market Sidecar", "Backtracking", "Daily Stats", "About"].map((item) => (
               <span key={item} className="rounded-full border border-white/10 bg-slate-800 px-2.5 py-1 text-slate-200">
                 {item}
               </span>
@@ -41,25 +41,29 @@ export default function AboutPage() {
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <SectionList title="Pokemon Data" items={["Evolutions", "Types", "Egg Groups"]} />
-          <SectionList title="Forms / Variations" items={["Gigantamax Forms", "Mega Evolutions"]} />
-          <SectionList title="Fun & Games" items={["Guess the Pokemon", "Trading Card Game"]} />
-          <SectionList title="Misc." items={["About"]} />
+          <SectionList
+            title="Signals"
+            items={["Search Interest", "Market Momentum", "Availability Pressure", "Release/Event Catalyst"]}
+          />
+          <SectionList title="Community Layer" items={["Community Sentiment", "Product Stress / Queue", "Signal Quality"]} />
+          <SectionList title="Market Data" items={["S&P 500", "Bitcoin", "Nintendo", "Inflation (CPI YoY)"]} />
+          <SectionList title="Platform" items={["15-minute server cache", "Manual reload", "UTC timestamps", "Daily Pokemon highlight"]} />
         </div>
 
         <section className="mt-6 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-          <h1 className="text-2xl font-black tracking-tight md:text-3xl">About Pokemon Awesome</h1>
+          <h1 className="text-2xl font-black tracking-tight md:text-3xl">About Monmeter</h1>
           <p className="mt-4 text-sm leading-7 text-slate-200">
-            Pokemon Awesome is basically just another random Pokemon-related web-application that appeared in the
-            wild.
+            Monmeter is a live dashboard that tracks Pokemon hype using a blended score built from news activity,
+            social/search momentum, and market context. The goal is to make the daily sentiment around Pokemon easier
+            to read at a glance while keeping the underlying signals transparent.
           </p>
           <p className="mt-3 text-sm leading-7 text-slate-200">
-            The creator of this web application developed it simply for the sake of having fun, while also learning
-            various aspects of software engineering and UI/UX design.
+            The score is updated from a server-side cached pipeline and is complemented by detailed components,
+            historical backtracking, day-level calendar stats, and direct source links for verification.
           </p>
 
           <h2 className="mt-7 text-lg font-bold">Contact:</h2>
-          <p className="mt-2 text-sm text-slate-200">Afifudin/digimushrm</p>
+          <p className="mt-2 text-sm text-slate-200">Giuseppe Vitolo (gvitolocs)</p>
           <p className="mt-2 text-sm text-slate-200">
             LinkedIn:{" "}
             <a className="text-cyan-300 hover:underline" href="https://www.linkedin.com/in/gvitolocs/">
@@ -75,64 +79,49 @@ export default function AboutPage() {
         </section>
 
         <section className="mt-6 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-          <h2 className="text-lg font-bold">Content & Copyright</h2>
+          <h2 className="text-lg font-bold">Data Sources & Method</h2>
           <p className="mt-3 text-sm leading-7 text-slate-200">
-            This unofficial web application offers certain information about Pokemon series or games. However, arts,
-            visuals, and names featured herein are the properties of Nitendo, Game Freak, &amp; The Pokemon Company.
-          </p>
-          <p className="mt-3 text-sm leading-7 text-slate-200">
-            Please note that this web application is not official and is not linked to the company mentioned above.
-            Some images used in this web application are copyrighted and belong to Nintendo, Game Freak, or The
-            Pokemon Company. They are used in accordance with the laws of Fair Use. No copyright infringement
-            intended.
+            Monmeter aggregates public data from multiple providers and computes an internal composite score.
+            External sources can be delayed, rate-limited, or temporarily unavailable, so fallback logic and caching
+            are used to keep the page stable.
           </p>
           <p className="mt-4 text-sm text-slate-200">
-            The main data sources for the content of this web application are:
+            Main live and fallback sources include:
           </p>
           <ul className="mt-2 space-y-1.5 text-sm text-slate-200">
             <li>
-              * PokeAPI (<a className="text-cyan-300 hover:underline" href="https://pokeapi.co/">https://pokeapi.co/</a>)
+              * Google News RSS, Reddit APIs, Pokemon official pages
             </li>
             <li>
-              * Pokemon TCG API (
-              <a className="text-cyan-300 hover:underline" href="https://pokemontcg.io/">
-                https://pokemontcg.io/
-              </a>
-              )
+              * Stooq, Yahoo Finance, CoinGecko, Binance
             </li>
+            <li>* FRED and World Bank datasets (inflation overlays)</li>
+            <li>* PokeAPI and CardTrader for Pokemon/card highlights</li>
           </ul>
           <p className="mt-3 text-sm leading-7 text-slate-200">
-            Special thanks to Simon Goellner for his awesome open-source Pokemon cards animation on{" "}
-            <a className="text-cyan-300 hover:underline" href="https://poke-holo.simey.me/">
-              https://poke-holo.simey.me/
-            </a>
-            .
+            This site is an independent project and is not affiliated with Nintendo, Game Freak, or The Pokemon
+            Company.
           </p>
         </section>
 
         <section className="mt-6 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-          <h2 className="text-lg font-bold">Privacy Policy</h2>
+          <h2 className="text-lg font-bold">Privacy & Caching</h2>
           <p className="mt-3 text-sm text-slate-200">
-            Here&apos;s a straightforward summary of how we handle your information:
+            Monmeter does not require user accounts and does not ask for personal profile data.
           </p>
           <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
             <li>
-              * Information Collection: No personal information is required to access this website or view any regular
-              pages.
+              * Browser-side storage is used for performance (localStorage and lightweight cookies for cache hints).
             </li>
             <li>
-              * Third-Party Links: Our website may contain links to third-party websites. Please note that we are not
-              responsible for their privacy practices. We encourage you to review their privacy policies.
+              * Server-side caching refreshes data on a timed cycle and supports manual refresh via the reload control.
             </li>
             <li>
-              * Limitation of Liability: We do not guarantee uninterrupted, secure, or error-free access to the
-              website, and we make no warranties regarding the accuracy of our content. We shall not be liable for any
-              interruptions, delays, errors in the operation of the website, or any damages arising from its use.
+              * Third-party links and APIs have their own privacy/security policies.
             </li>
-            <li>* Consent: By using our website, you consent to our Privacy Policy and agree to its terms.</li>
+            <li>* This project is provided as-is, without guarantees of uninterrupted upstream availability.</li>
           </ul>
-          <p className="mt-4 text-sm text-slate-400">- Last updated at 14 April 2024.</p>
-          <p className="mt-2 text-sm text-slate-300">We may update our Privacy Policy from time to time.</p>
+          <p className="mt-4 text-sm text-slate-400">Last updated: {new Date().toISOString().slice(0, 10)} (UTC)</p>
         </section>
 
         <div className="mt-6">
