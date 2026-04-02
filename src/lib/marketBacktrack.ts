@@ -57,6 +57,74 @@ const HIST_FETCH_TIMEOUT_MS = 18_000;
 const FRED_API_TIMEOUT_MS = 12_000;
 const WB_INFLATION_TIMEOUT_MS = 10_000;
 
+/**
+ * Durable yearly fallback shape so overlays stay informative during upstream outages on cold starts.
+ * Source: Yahoo monthly chart API yearly closes (captured 2026-04-02 UTC).
+ */
+const STATIC_YEARLY_CLOSES_SP500: Record<number, number> = {
+  2005: 1248.29,
+  2006: 1418.3,
+  2007: 1468.36,
+  2008: 903.25,
+  2009: 1115.1,
+  2010: 1257.64,
+  2011: 1257.6,
+  2012: 1426.19,
+  2013: 1848.36,
+  2014: 2058.9,
+  2015: 2043.94,
+  2016: 2238.83,
+  2017: 2673.61,
+  2018: 2506.85,
+  2019: 3230.78,
+  2020: 3756.07,
+  2021: 4766.18,
+  2022: 3839.5,
+  2023: 4769.83,
+  2024: 5881.63,
+  2025: 6845.5,
+  2026: 6527.49,
+};
+const STATIC_YEARLY_CLOSES_BTC: Record<number, number> = {
+  2014: 320.193,
+  2015: 430.567,
+  2016: 963.743,
+  2017: 14156.4,
+  2018: 3742.7,
+  2019: 7193.599,
+  2020: 29001.721,
+  2021: 46306.445,
+  2022: 16547.496,
+  2023: 42265.188,
+  2024: 93429.203,
+  2025: 87508.828,
+  2026: 66389.406,
+};
+const STATIC_YEARLY_CLOSES_NINTENDO: Record<number, number> = {
+  2005: 3.05,
+  2006: 6.5,
+  2007: 14.81,
+  2008: 9.55,
+  2009: 5.964,
+  2010: 7.266,
+  2011: 3.388,
+  2012: 2.662,
+  2013: 3.336,
+  2014: 2.59,
+  2015: 3.452,
+  2016: 5.19,
+  2017: 9.014,
+  2018: 6.62,
+  2019: 9.98,
+  2020: 16.104,
+  2021: 11.674,
+  2022: 10.42,
+  2023: 12.99,
+  2024: 14.63,
+  2025: 16.86,
+  2026: 13.77,
+};
+
 /** Last trading close per calendar year from Stooq daily CSV (header must include Date + Close). */
 export function parseStooqDailyHistoryToYearlyLastClose(csv: string): YearlyCloseMap {
   const map: YearlyCloseMap = new Map();
@@ -544,6 +612,18 @@ function buildRecentMonthLabels(count: number, now = new Date()): string[] {
   return out;
 }
 
+function pickStaticYearlyFallbackMap(
+  years: number[],
+  staticByYear: Record<number, number>,
+): YearlyCloseMap {
+  const out: YearlyCloseMap = new Map();
+  for (const year of years) {
+    const close = staticByYear[year];
+    if (typeof close === "number" && Number.isFinite(close)) out.set(year, close);
+  }
+  return out;
+}
+
 /**
  * Sparse maps (e.g. only year-end points) can have size>8 but still render almost flat on a 24M chart.
  * Require a minimum amount of coverage inside the actual recent window.
@@ -686,8 +766,8 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     }
   }
 
-  const spAligned = alignYearSeries(years, spMap);
-  const btcAligned = alignYearSeries(years, btcMap);
+  let spAligned = alignYearSeries(years, spMap);
+  let btcAligned = alignYearSeries(years, btcMap);
   let ntAligned = alignYearSeries(years, ntMap);
   /** NTDOY OTC can be sparse; Tokyo Stooq listing restores shape (single source, JPY→chart). */
   if (!seriesHasVariance(ntAligned)) {
@@ -698,6 +778,20 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     const fromYahooTokyo = yearlyFromMonthly(yahooTokyo);
     ntMap = mergeYearlyMaps(fromYahooTokyo, stooqTokyo);
     ntMonthly = mergeMonthlyMaps(yahooTokyo, ntMonthly);
+    ntAligned = alignYearSeries(years, ntMap);
+  }
+
+  // Final durable fallback for cold starts when all live sources fail.
+  if (!seriesHasVariance(spAligned)) {
+    spMap = mergeYearlyMaps(pickStaticYearlyFallbackMap(years, STATIC_YEARLY_CLOSES_SP500), spMap);
+    spAligned = alignYearSeries(years, spMap);
+  }
+  if (!seriesHasVariance(btcAligned)) {
+    btcMap = mergeYearlyMaps(pickStaticYearlyFallbackMap(years, STATIC_YEARLY_CLOSES_BTC), btcMap);
+    btcAligned = alignYearSeries(years, btcMap);
+  }
+  if (!seriesHasVariance(ntAligned)) {
+    ntMap = mergeYearlyMaps(pickStaticYearlyFallbackMap(years, STATIC_YEARLY_CLOSES_NINTENDO), ntMap);
     ntAligned = alignYearSeries(years, ntMap);
   }
   const inflationYoY = alignYearSeries(years, cpiYoYMap);

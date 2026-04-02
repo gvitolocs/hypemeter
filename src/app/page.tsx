@@ -2013,15 +2013,21 @@ async function loadHomePageDataUncached() {
     socialPulseScore: socialPulse.aggregateScore,
   });
   const history = buildBacktrackSeries(score);
-  const [marketOverlay, cardTraderBestSeller] = await Promise.all([
+  const [marketOverlay, cardTraderBestSellerLive] = await Promise.all([
     timedAsync("home:fetchMarketYearlyOverlay", () =>
       fetchMarketYearlyOverlay(history.map((h) => h.year)),
     ),
     timedAsync("home:fetchCardTraderPokemonBestSeller", () => fetchCardTraderPokemonBestSeller()),
   ]);
-  if (cardTraderBestSeller) {
-    upsertRuntimeSnapshotToDb("card_highlight_best_seller", cardTraderBestSeller);
-  }
+  const cardTraderBestSeller =
+    cardTraderBestSellerLive ??
+    readRuntimeSnapshotFromDb<{
+      name: string;
+      imageUrl: string;
+      cardUrl: string;
+      fromPrice: string;
+    }>("card_highlight_best_seller");
+  if (cardTraderBestSellerLive) upsertRuntimeSnapshotToDb("card_highlight_best_seller", cardTraderBestSellerLive);
   const todayCalendarStats = buildTodayCalendarStats(
     items.slice(0, 20),
     score,
