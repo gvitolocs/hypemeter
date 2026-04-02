@@ -1099,6 +1099,7 @@ function summarizeHype(
     eventCatalyst: number;
     communitySentiment: number;
     socialPulse: SocialPulseStats;
+    socialTraffic: SocialTrafficSnapshot;
   },
 ) {
   // Recency and scarcity signals drive market pressure-style components.
@@ -1167,15 +1168,36 @@ function summarizeHype(
       external.socialPulse.breadthScore * 0.2,
   );
 
+  // Detect short-term social "spikes" (or drops) from platform day-over-day deltas.
+  const platformDeltas = Object.values(external.socialTraffic)
+    .map((p) => percentDelta(p.current, p.previous))
+    .filter((v) => Number.isFinite(v));
+  const positiveSpikeSum = platformDeltas
+    .filter((d) => d > 18)
+    .reduce((sum, d) => sum + Math.min(220, d), 0);
+  const negativeSpikeSum = platformDeltas
+    .filter((d) => d < -14)
+    .reduce((sum, d) => sum + Math.max(-220, d), 0);
+  const spikeBoost =
+    Math.tanh(positiveSpikeSum / 145) * 12 + Math.tanh(negativeSpikeSum / 145) * 8;
+  const recencySpikeAmplifier = 0.7 + recencyCoverage * 0.6;
+  const socialSpikeAdjustment = spikeBoost * recencySpikeAmplifier;
+
   // Increase movement around the neutral center so multi-day values do not stick near ~50.
   const amplifyFromNeutral = (value: number, multiplier = 1.22) =>
     clampScore(50 + (value - 50) * multiplier);
 
-  const searchInterestResponsive = amplifyFromNeutral(searchInterestScore, 1.2);
+  const searchInterestResponsive = clampScore(
+    amplifyFromNeutral(searchInterestScore, 1.2) + socialSpikeAdjustment * 0.35,
+  );
   const marketMomentumResponsive = amplifyFromNeutral(marketMomentumScore, 1.2);
   const availabilityResponsive = amplifyFromNeutral(availabilityPressureScore, 1.28);
-  const releaseResponsive = amplifyFromNeutral(releaseCatalystScore, 1.18);
-  const communityResponsive = amplifyFromNeutral(communitySentimentScore, 1.15);
+  const releaseResponsive = clampScore(
+    amplifyFromNeutral(releaseCatalystScore, 1.18) + socialSpikeAdjustment * 0.45,
+  );
+  const communityResponsive = clampScore(
+    amplifyFromNeutral(communitySentimentScore, 1.15) + socialSpikeAdjustment * 0.4,
+  );
   const productStressResponsive = amplifyFromNeutral(productStressScore, 1.26);
 
   const components: SignalComponent[] = [
@@ -1230,9 +1252,8 @@ function summarizeHype(
   ];
 
   // Weighted master score plus community/market sub-indices used by the UI.
-  const score = clampScore(
-    components.reduce((sum, component) => sum + component.score * component.weight, 0),
-  );
+  const baseScore = components.reduce((sum, component) => sum + component.score * component.weight, 0);
+  const score = clampScore(baseScore + socialSpikeAdjustment * 0.55);
   const communityScore = clampScore(
     components
       .filter((component) => component.group === "community")
@@ -1939,6 +1960,7 @@ async function loadHomePageDataUncached() {
     eventCatalyst,
     communitySentiment,
     socialPulse,
+    socialTraffic,
   });
   const cycle30 = buildThirtyYearCycle(new Date().getFullYear());
   const sentiments = computeWindowSentiments({

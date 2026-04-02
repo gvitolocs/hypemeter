@@ -13,11 +13,18 @@ export function HomeReloadButton() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/revalidate-home", { method: "POST" });
+      const res = await fetch("/api/revalidate-home", {
+        method: "POST",
+        cache: "no-store",
+      });
       if (!res.ok) {
         throw new Error("reload_failed");
       }
+      // First refresh immediately, then once more to pick the new payload if a stale response raced.
       router.refresh();
+      window.setTimeout(() => {
+        router.refresh();
+      }, 1200);
     } catch {
       setError("Reload failed");
     } finally {

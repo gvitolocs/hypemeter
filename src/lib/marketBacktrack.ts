@@ -11,6 +11,8 @@ import {
   readStaticCpiYoYFromDb,
   readStooqMonthlyCloseFromDb,
   readStooqYearlyCloseFromDb,
+  readRuntimeSnapshotFromDb,
+  upsertRuntimeSnapshotToDb,
   upsertStooqMonthlyClose,
   upsertStooqYearlyClose,
 } from "@/lib/staticDataDb";
@@ -404,6 +406,17 @@ async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<Year
   }
 }
 
+async function fetchStooqYearlyClosesBySymbols(symbols: string[]): Promise<YearlyCloseMap> {
+  const merged = new Map<number, number>();
+  for (const s of symbols) {
+    const m = await fetchStooqYearlyClosesBySymbol(s);
+    for (const [y, c] of m) {
+      if (!merged.has(y)) merged.set(y, c);
+    }
+  }
+  return merged;
+}
+
 async function fetchStooqMonthlyClosesBySymbol(
   stooqSymbol: string,
   windowMonths = 30,
@@ -436,6 +449,20 @@ async function fetchStooqMonthlyClosesBySymbol(
   } catch {
     return cached;
   }
+}
+
+async function fetchStooqMonthlyClosesBySymbols(
+  symbols: string[],
+  windowMonths = 30,
+): Promise<MonthlyCloseMap> {
+  const merged = new Map<string, number>();
+  for (const s of symbols) {
+    const m = await fetchStooqMonthlyClosesBySymbol(s, windowMonths);
+    for (const [ym, c] of m) {
+      if (!merged.has(ym)) merged.set(ym, c);
+    }
+  }
+  return merged;
 }
 
 function buildRecentMonthLabels(count: number, now = new Date()): string[] {
@@ -527,15 +554,17 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     return { sp500: [], btc: [], nintendo: [], inflationYoY: [], inflation: [], monthly: undefined };
   }
   const key = yearsKey(years);
-  const previousGood = lastGoodOverlayByYears.get(key);
+  const previousGood =
+    lastGoodOverlayByYears.get(key) ??
+    readRuntimeSnapshotFromDb<MarketYearlyOverlay>(`overlay_years_${key}`);
   const [spS, btcS, ntUs, ntPlain, cpiYoYMap, spM, btcM, ntUsM, ntPlainM] = await Promise.all([
-    timedAsync("overlay:stooq^spx", () => fetchStooqYearlyClosesBySymbol("^spx")),
-    timedAsync("overlay:stooqbtcusd", () => fetchStooqYearlyClosesBySymbol("btcusd")),
+    timedAsync("overlay:stooq:sp500", () => fetchStooqYearlyClosesBySymbols(["^spx", "spx", "spy.us"])),
+    timedAsync("overlay:stooq:btc", () => fetchStooqYearlyClosesBySymbols(["btcusd", "btcusd.v"])),
     timedAsync("overlay:stooqNtdyUs", () => fetchStooqYearlyClosesBySymbol("ntdoy.us")),
     timedAsync("overlay:stooqNtdy", () => fetchStooqYearlyClosesBySymbol("ntdoy")),
     timedAsync("overlay:cpiYoY(fred+wb+csv)", () => fetchFredCpiYoYByYear(years)),
-    timedAsync("overlay:monthly:spx", () => fetchStooqMonthlyClosesBySymbol("^spx")),
-    timedAsync("overlay:monthly:btc", () => fetchStooqMonthlyClosesBySymbol("btcusd")),
+    timedAsync("overlay:monthly:sp500", () => fetchStooqMonthlyClosesBySymbols(["^spx", "spx", "spy.us"])),
+    timedAsync("overlay:monthly:btc", () => fetchStooqMonthlyClosesBySymbols(["btcusd", "btcusd.v"])),
     timedAsync("overlay:monthly:ntUs", () => fetchStooqMonthlyClosesBySymbol("ntdoy.us")),
     timedAsync("overlay:monthly:nt", () => fetchStooqMonthlyClosesBySymbol("ntdoy")),
   ]);
@@ -594,6 +623,7 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
 
   if (overlayHasCoreVariance(overlay)) {
     lastGoodOverlayByYears.set(key, overlay);
+    upsertRuntimeSnapshotToDb(`overlay_years_${key}`, overlay);
   } else if (previousGood) {
     overlay = previousGood;
   }
