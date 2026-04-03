@@ -1547,6 +1547,24 @@ function meterColor(score: number) {
   return "from-slate-400 via-slate-500 to-slate-700";
 }
 
+function narrativeIndicatorLevel(tag: string, kind: "momentum" | "breadth" | "conviction"): number {
+  const t = tag.toLowerCase();
+  if (kind === "momentum") {
+    if (t.includes("up")) return 86;
+    if (t.includes("range")) return 56;
+    if (t.includes("soft")) return 30;
+  } else if (kind === "breadth") {
+    if (t.includes("broad")) return 82;
+    if (t.includes("mixed")) return 55;
+    if (t.includes("narrow")) return 28;
+  } else {
+    if (t.includes("high")) return 85;
+    if (t.includes("medium")) return 58;
+    if (t.includes("low")) return 32;
+  }
+  return 50;
+}
+
 // Build the displayed 2005->today timeline and blend latest point with live score.
 function buildBacktrackSeries(liveScore: number): YearScore[] {
   const currentYear = new Date().getFullYear();
@@ -2443,21 +2461,45 @@ export default async function Home() {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-3 sm:min-h-[5.5rem] sm:flex sm:flex-col sm:justify-center">
                   <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Momentum</p>
-                  <p className="mt-1 text-sm font-semibold leading-snug text-cyan-300">
-                    {traderNarrative.momentumTag}
-                  </p>
+                  <div className="mt-1 flex items-end justify-between gap-2">
+                    <p className="text-sm font-semibold leading-snug text-cyan-300">
+                      {traderNarrative.momentumTag}
+                    </p>
+                    <div className="relative h-14 w-2 shrink-0 overflow-hidden rounded-full bg-slate-700">
+                      <div
+                        className="absolute inset-x-0 bottom-0 rounded-full bg-gradient-to-t from-cyan-400 to-fuchsia-400"
+                        style={{ height: `${narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum")}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-3 sm:min-h-[5.5rem] sm:flex sm:flex-col sm:justify-center">
                   <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Breadth</p>
-                  <p className="mt-1 text-sm font-semibold leading-snug text-cyan-300">
-                    {traderNarrative.breadthTag}
-                  </p>
+                  <div className="mt-1 flex items-end justify-between gap-2">
+                    <p className="text-sm font-semibold leading-snug text-cyan-300">
+                      {traderNarrative.breadthTag}
+                    </p>
+                    <div className="relative h-14 w-2 shrink-0 overflow-hidden rounded-full bg-slate-700">
+                      <div
+                        className="absolute inset-x-0 bottom-0 rounded-full bg-gradient-to-t from-cyan-400 to-fuchsia-400"
+                        style={{ height: `${narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth")}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-3 sm:min-h-[5.5rem] sm:flex sm:flex-col sm:justify-center">
                   <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Conviction</p>
-                  <p className="mt-1 text-sm font-semibold leading-snug text-cyan-300">
-                    {traderNarrative.convictionTag}
-                  </p>
+                  <div className="mt-1 flex items-end justify-between gap-2">
+                    <p className="text-sm font-semibold leading-snug text-cyan-300">
+                      {traderNarrative.convictionTag}
+                    </p>
+                    <div className="relative h-14 w-2 shrink-0 overflow-hidden rounded-full bg-slate-700">
+                      <div
+                        className="absolute inset-x-0 bottom-0 rounded-full bg-gradient-to-t from-cyan-400 to-fuchsia-400"
+                        style={{ height: `${narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction")}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-slate-800/80 p-3 lg:h-full lg:max-w-none">
