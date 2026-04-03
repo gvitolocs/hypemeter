@@ -155,6 +155,8 @@ const HOME_EVENT_CATALYST_CACHE_KEY = "home_event_catalyst_v1";
 const HOME_COMMUNITY_SENTIMENT_CACHE_KEY = "home_community_sentiment_v1";
 const HOME_SOCIAL_TRAFFIC_CACHE_KEY = "home_social_traffic_v1";
 const HOME_NEWS_ITEMS_CACHE_KEY = "home_news_items_v1";
+const MARKET_SNAPSHOT_CACHE_KEY = "market_snapshot";
+const MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY = "market_snapshot_last_good_v1";
 const HOME_TIMEOUT_NEWS_MS = 800;
 const HOME_TIMEOUT_MARKET_MS = 1000;
 const HOME_TIMEOUT_SIGNAL_MS = 900;
@@ -296,6 +298,53 @@ function normalizeMarketSnapshot(snapshot: MarketSnapshot): MarketSnapshot {
     nintendoSource: snapshot.nintendoSource,
     sp500Source: snapshot.sp500Source,
     bitcoinSource: snapshot.bitcoinSource,
+  };
+}
+
+function emptyMarketSnapshot(): MarketSnapshot {
+  return {
+    sp500: null,
+    bitcoin: null,
+    nintendo: null,
+    nintendoPreviousClose: null,
+    nintendoChangeAbs: null,
+    nintendoChangeCurrency: null,
+    sp500GrowthPct: null,
+    bitcoinGrowthPct: null,
+    nintendoGrowthPct: null,
+    updatedAt: null,
+    nintendoSource: null,
+    sp500Source: null,
+    bitcoinSource: null,
+  };
+}
+
+function hasMeaningfulMarketSnapshot(snapshot: MarketSnapshot): boolean {
+  return (
+    snapshot.sp500 !== null ||
+    snapshot.bitcoin !== null ||
+    snapshot.nintendo !== null ||
+    snapshot.sp500GrowthPct !== null ||
+    snapshot.bitcoinGrowthPct !== null ||
+    snapshot.nintendoGrowthPct !== null
+  );
+}
+
+function mergeMarketSnapshotFallback(primary: MarketSnapshot, fallback: MarketSnapshot): MarketSnapshot {
+  return {
+    sp500: primary.sp500 ?? fallback.sp500,
+    bitcoin: primary.bitcoin ?? fallback.bitcoin,
+    nintendo: primary.nintendo ?? fallback.nintendo,
+    nintendoPreviousClose: primary.nintendoPreviousClose ?? fallback.nintendoPreviousClose,
+    nintendoChangeAbs: primary.nintendoChangeAbs ?? fallback.nintendoChangeAbs,
+    nintendoChangeCurrency: primary.nintendoChangeCurrency ?? fallback.nintendoChangeCurrency,
+    sp500GrowthPct: primary.sp500GrowthPct ?? fallback.sp500GrowthPct,
+    bitcoinGrowthPct: primary.bitcoinGrowthPct ?? fallback.bitcoinGrowthPct,
+    nintendoGrowthPct: primary.nintendoGrowthPct ?? fallback.nintendoGrowthPct,
+    updatedAt: primary.updatedAt ?? fallback.updatedAt,
+    nintendoSource: primary.nintendoSource ?? fallback.nintendoSource,
+    sp500Source: primary.sp500Source ?? fallback.sp500Source,
+    bitcoinSource: primary.bitcoinSource ?? fallback.bitcoinSource,
   };
 }
 
@@ -2012,35 +2061,32 @@ async function loadHomePageDataUncached() {
     () => cachedNewsItems ?? [],
   );
 
-  const cachedMarket = readRuntimeSnapshotFromDb<MarketSnapshot>("market_snapshot");
+  const cachedMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY);
+  const cachedMarket = cachedMarketRaw ? normalizeMarketSnapshot(cachedMarketRaw) : null;
+  const lastGoodMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY);
+  const lastGoodMarket = lastGoodMarketRaw ? normalizeMarketSnapshot(lastGoodMarketRaw) : null;
   let market = normalizeMarketSnapshot(
     await withSoftTimeout(
       () => timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshot()),
       HOME_TIMEOUT_MARKET_MS,
-      () =>
-        cachedMarket ?? {
-          sp500: null,
-          bitcoin: null,
-          nintendo: null,
-          nintendoPreviousClose: null,
-          nintendoChangeAbs: null,
-          nintendoChangeCurrency: null,
-          sp500GrowthPct: null,
-          bitcoinGrowthPct: null,
-          nintendoGrowthPct: null,
-          updatedAt: null,
-          nintendoSource: null,
-          sp500Source: null,
-          bitcoinSource: null,
-        },
+      () => cachedMarket ?? lastGoodMarket ?? emptyMarketSnapshot(),
     ),
   );
-  if (market.sp500 === null && market.bitcoin === null) {
-    if (cachedMarket) {
-      market = normalizeMarketSnapshot(cachedMarket);
-    }
+  if (cachedMarket) {
+    market = mergeMarketSnapshotFallback(market, cachedMarket);
   }
-  upsertRuntimeSnapshotToDb("market_snapshot", market);
+  if (lastGoodMarket) {
+    market = mergeMarketSnapshotFallback(market, lastGoodMarket);
+  }
+
+  if (hasMeaningfulMarketSnapshot(market)) {
+    upsertRuntimeSnapshotToDb(MARKET_SNAPSHOT_CACHE_KEY, market);
+    upsertRuntimeSnapshotToDb(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY, market);
+  } else if (lastGoodMarket) {
+    market = lastGoodMarket;
+  } else if (cachedMarket) {
+    market = cachedMarket;
+  }
 
   // Pull independent external signals in parallel to minimize latency.
   [searchStats, marketMomentum, eventCatalyst, communitySentiment] = await Promise.all([
