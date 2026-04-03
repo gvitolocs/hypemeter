@@ -1409,12 +1409,8 @@ function buildTraderNarrative(args: {
         : score >= 40
           ? "Neutral / Two-Way"
           : "Defensive Risk-Off";
-  const summary =
-    score >= 55
-      ? "Buyers control flow, but focus on confirmation and follow-through."
-      : score >= 40
-        ? "Tape is mixed; favor selective entries and tighter risk."
-        : "Capital preservation first; wait for stronger participation breadth.";
+  const roundedScore = Math.max(0, Math.min(100, Math.round(score)));
+  const summary = INVESTMENT_LINE_BY_SCORE[roundedScore];
   const momentumTag = momentum >= 60 ? "Trend Up" : momentum >= 45 ? "Range" : "Trend Soft";
   const breadthTag = breadth >= 60 ? "Broad" : breadth >= 45 ? "Mixed" : "Narrow";
   const convictionTag =
@@ -1422,6 +1418,40 @@ function buildTraderNarrative(args: {
 
   return { regime, summary, momentumTag, breadthTag, convictionTag };
 }
+
+function buildInvestmentLineByScore(score: number): string {
+  const s = Math.max(0, Math.min(100, Math.round(score)));
+  const coreAllocation = Math.round(18 + s * 0.62);
+  const tacticalAllocation = Math.round(8 + s * 0.24);
+  const cashAllocation = Math.max(0, 100 - coreAllocation - tacticalAllocation);
+  const stopLossPct = (6.8 - s * 0.035).toFixed(1);
+  const setup =
+    s >= 85
+      ? "Press trend continuation only"
+      : s >= 70
+        ? "Prioritize breakout follow-through"
+        : s >= 55
+          ? "Scale into selective risk-on entries"
+          : s >= 40
+            ? "Trade two-way with smaller sizing"
+            : s >= 25
+              ? "Defend capital and fade weak rallies"
+              : "Stay defensive and wait for confirmation";
+  const hedge =
+    s >= 75
+      ? "hedges light"
+      : s >= 55
+        ? "partial hedges active"
+        : s >= 40
+          ? "balanced hedges"
+          : s >= 25
+            ? "heavy hedges"
+            : "full hedge posture";
+
+  return `Hype ${s}/100: ${setup}; core ${coreAllocation}% / tactical ${tacticalAllocation}% / cash ${cashAllocation}%, ${hedge}, risk stop ~${stopLossPct}%.`;
+}
+
+const INVESTMENT_LINE_BY_SCORE = Array.from({ length: 101 }, (_, score) => buildInvestmentLineByScore(score));
 
 // Synthetic long-cycle baseline model used for contextual 30-year sentiment framing.
 function buildThirtyYearCycle(currentYear: number) {

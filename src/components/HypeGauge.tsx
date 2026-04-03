@@ -3,11 +3,12 @@ type Props = {
 };
 
 const ZONES = [
-  { label: "Dead", color: "#475569" },
-  { label: "Calm", color: "#6366f1" },
-  { label: "Warm", color: "#22d3ee" },
-  { label: "Hype", color: "#e879f9" },
-  { label: "Max", color: "#fb7185" },
+  { label: "Freeze", color: "#1d4ed8" },
+  { label: "Cool", color: "#4f46e5" },
+  { label: "Build", color: "#06b6d4" },
+  { label: "Warm", color: "#a855f7" },
+  { label: "Hot", color: "#ec4899" },
+  { label: "Euphoria", color: "#fb7185" },
 ] as const;
 
 function polar(cx: number, cy: number, r: number, angleRad: number) {
@@ -24,8 +25,8 @@ function arcStroke(cx: number, cy: number, r: number, a0: number, a1: number) {
 }
 
 function zoneIndex(score: number) {
-  if (score >= 100) return 4;
-  return Math.min(4, Math.floor(score / 20));
+  if (score >= 100) return 5;
+  return Math.min(5, Math.floor((score / 100) * ZONES.length));
 }
 
 /**
@@ -66,8 +67,8 @@ export default function HypeGauge({ score }: Props) {
           opacity={0.55}
         />
         {ZONES.map((zone, i) => {
-          const a0 = Math.PI * (1 - i / 5);
-          const a1 = Math.PI * (1 - (i + 1) / 5);
+          const a0 = Math.PI * (1 - i / ZONES.length);
+          const a1 = Math.PI * (1 - (i + 1) / ZONES.length);
           return (
             <path
               key={zone.label}
