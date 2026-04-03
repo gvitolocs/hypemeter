@@ -1,6 +1,6 @@
 import BacktrackMarketSection from "@/components/BacktrackMarketSection";
+import { CardHighlightPanel } from "@/components/CardHighlightPanel";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
-import { CardTraderHighlightImage } from "@/components/CardTraderHighlightImage";
 import { HomePageClientCacheWriter } from "@/components/HomePageClientCacheWriter";
 import { HomeNextUpdateCountdown } from "@/components/HomeNextUpdateCountdown";
 import { HomeReloadButton } from "@/components/HomeReloadButton";
@@ -2373,49 +2373,7 @@ export default async function Home() {
                   />
                 </div>
               </div>
-              {cardTraderBestSeller ? (
-                <div className="flex h-full w-full max-w-full shrink-0 flex-col rounded-2xl border border-amber-400/30 bg-slate-950/80 p-3 lg:w-56">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-amber-300">
-                    Card Highlight
-                  </p>
-                  <a
-                    href={cardTraderBestSeller.cardUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 flex min-h-0 flex-1 items-start gap-2.5 rounded-xl transition-colors hover:bg-slate-900/60"
-                    title="Open this listing on CardTrader"
-                  >
-                    <CardTraderHighlightImage
-                      imageUrl={cardTraderBestSeller.imageUrl}
-                      alt=""
-                      width={70}
-                      height={98}
-                      className="h-16 w-auto shrink-0 rounded-md bg-slate-900 object-contain object-top shadow-inner"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold leading-snug text-white line-clamp-3">
-                        {cardTraderBestSeller.name}
-                      </p>
-                      {cardTraderBestSeller.fromPrice ? (
-                        <p className="mt-1 text-[11px] font-medium text-amber-200/95">
-                          from ${cardTraderBestSeller.fromPrice}
-                        </p>
-                      ) : null}
-        </div>
-                  </a>
-                </div>
-              ) : (
-                <div className="flex h-full w-full max-w-full shrink-0 flex-col rounded-2xl border border-amber-400/30 bg-slate-950/80 p-3 lg:w-56">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-amber-300">
-                    Card Highlight
-                  </p>
-                  <div className="mt-2 flex min-h-0 flex-1 items-center rounded-xl border border-amber-400/20 bg-slate-900/60 px-2.5 py-2">
-                    <p className="text-xs font-medium leading-snug text-amber-100/95">
-                      CardTrader under maintenance
-                    </p>
-                  </div>
-                </div>
-              )}
+              <CardHighlightPanel cardTraderBestSeller={cardTraderBestSeller} />
               {pokemonOfDay ? (
                 <a
                   href={pokemonHighlightHref}

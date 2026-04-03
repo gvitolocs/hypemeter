@@ -47,6 +47,14 @@ export default function AboutPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">
       <div className="mx-auto w-full max-w-5xl">
+        <div className="mb-4">
+          <Link
+            href="/"
+            className="inline-flex items-center rounded-xl border border-cyan-400/35 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-300 transition hover:border-cyan-300/70 hover:bg-slate-800/80"
+          >
+            Back to homepage
+          </Link>
+        </div>
         <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
           <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30">
             <p className="text-sm font-semibold tracking-[0.08em] text-fuchsia-300">MONMETER</p>
@@ -102,6 +110,12 @@ export default function AboutPage() {
               <p className="text-xs text-slate-400">@gvitolocs</p>
             </div>
             <div className="mt-4 space-y-2 text-sm">
+              <a
+                className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
+                href="mailto:gvitolocs@gmail.com"
+              >
+                Email: gvitolocs@gmail.com
+              </a>
               <a
                 className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
                 href="https://www.linkedin.com/in/gvitolocs/"
@@ -202,11 +216,6 @@ export default function AboutPage() {
           <p className="mt-4 text-sm text-slate-400">Last updated: {new Date().toISOString().slice(0, 10)} (UTC)</p>
         </section>
 
-        <div className="mt-6">
-          <Link href="/" className="text-sm text-cyan-300 hover:underline">
-            Back to homepage
-          </Link>
-        </div>
       </div>
     </main>
   );

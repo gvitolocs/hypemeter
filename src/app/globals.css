@@ -102,14 +102,16 @@ body {
 
 .narrative-liquid-wave {
   border-radius: 9999px;
-  opacity: 0.95;
+  opacity: 0.92;
   background-repeat: repeat-x, repeat-x;
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='16' viewBox='0 0 120 16'%3E%3Cpath fill='%237dd3fc' fill-opacity='0.75' d='M0 10 C10 2 30 2 40 10 C50 18 70 18 80 10 C90 2 110 2 120 10 L120 16 L0 16 Z'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='16' viewBox='0 0 160 16'%3E%3Cpath fill='%23d946ef' fill-opacity='0.55' d='M0 9 C12 1 28 1 40 9 C52 17 68 17 80 9 C92 1 108 1 120 9 C132 17 148 17 160 9 L160 16 L0 16 Z'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='16' viewBox='0 0 120 16'%3E%3Cpath fill='%2322d3ee' fill-opacity='0.62' d='M0 10 C10 2 30 2 40 10 C50 18 70 18 80 10 C90 2 110 2 120 10 L120 16 L0 16 Z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='16' viewBox='0 0 160 16'%3E%3Cpath fill='%23c026d3' fill-opacity='0.42' d='M0 9 C12 1 28 1 40 9 C52 17 68 17 80 9 C92 1 108 1 120 9 C132 17 148 17 160 9 L160 16 L0 16 Z'/%3E%3C/svg%3E");
   background-size:
     120px 16px,
     160px 16px;
+  background-blend-mode: screen;
+  filter: saturate(0.95);
   animation: liquid-wave-seamless 6s linear infinite;
 }
 
