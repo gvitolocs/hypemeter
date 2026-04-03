@@ -149,69 +149,38 @@ body {
   overflow: hidden;
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(
     180deg,
-    rgba(14, 165, 233, 0.52) 0%,
-    rgba(6, 182, 212, 0.64) 44%,
-    rgba(8, 145, 178, 0.78) 100%
+    rgba(34, 211, 238, 0.56) 0%,
+    rgba(34, 211, 238, 0.68) 52%,
+    rgba(34, 211, 238, 0.8) 100%
   );
   background-size: 100% 100%;
   background-position: 50% 0%;
   position: relative;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    inset 0 -14px 24px rgba(2, 132, 199, 0.22);
 }
 
 .narrative-fill-body::before {
   content: "";
   position: absolute;
-  left: -40%;
-  width: 180%;
-  top: -11px;
-  height: 20px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='20' viewBox='0 0 160 20'%3E%3Cpath fill='%2367e8f9' fill-opacity='0.95' d='M0 11 C12 3 28 3 40 11 C52 19 68 19 80 11 C92 3 108 3 120 11 C132 19 148 19 160 11 L160 20 L0 20 Z'/%3E%3C/svg%3E");
+  left: 0;
+  right: 0;
+  top: -10px;
+  height: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='14' viewBox='0 0 120 14'%3E%3Cpath fill='%2322d3ee' fill-opacity='0.9' d='M0 9 C10 2 30 2 40 9 C50 16 70 16 80 9 C90 2 110 2 120 9 L120 14 L0 14 Z'/%3E%3C/svg%3E");
   background-repeat: repeat-x;
-  background-size: 160px 20px;
+  background-size: 120px 14px;
   background-position: 0 0;
-  opacity: 0.92;
-  animation: narrative-crest-wave-a 6.4s linear infinite;
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.25));
+  animation: narrative-crest-wave 4.8s linear infinite;
   pointer-events: none;
 }
 
-.narrative-fill-body::after {
-  content: "";
-  position: absolute;
-  left: -35%;
-  width: 170%;
-  top: -8px;
-  height: 16px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='132' height='16' viewBox='0 0 132 16'%3E%3Cpath fill='%2322d3ee' fill-opacity='0.7' d='M0 8 C9 2 24 2 33 8 C42 14 57 14 66 8 C75 2 90 2 99 8 C108 14 123 14 132 8 L132 16 L0 16 Z'/%3E%3C/svg%3E");
-  background-repeat: repeat-x;
-  background-size: 132px 16px;
-  background-position: 0 0;
-  opacity: 0.72;
-  animation: narrative-crest-wave-b 9.2s linear infinite reverse;
-  pointer-events: none;
-}
-
-@keyframes narrative-crest-wave-a {
+@keyframes narrative-crest-wave {
   0% {
     background-position: 0 0;
   }
   100% {
-    background-position: -160px 0;
-  }
-}
-
-@keyframes narrative-crest-wave-b {
-  0% {
-    background-position: 0 0;
-  }
-  100% {
-    background-position: -132px 0;
+    background-position: -120px 0;
   }
 }
 
@@ -230,10 +199,6 @@ body {
   }
 
   .narrative-fill-body::before {
-    animation: none !important;
-  }
-
-  .narrative-fill-body::after {
     animation: none !important;
   }
 

@@ -1672,12 +1672,12 @@ function narrativeCardLabel(tag: string, kind: "momentum" | "breadth" | "convict
 
 function narrativeCardExplanation(_tag: string, kind: "momentum" | "breadth" | "conviction"): string {
   if (kind === "momentum") {
-    return "Momentum: tendenza dei prezzi a continuare nella direzione recente; asset forti restano forti e asset deboli restano deboli per un periodo.";
+    return "Momentum: the tendency of prices to keep moving in their recent direction; strong assets often stay strong while weak assets stay weak for a period.";
   }
   if (kind === "breadth") {
-    return "Breadth: misura quante azioni salgono rispetto a quante scendono; una salita e piu solida se partecipano molti titoli.";
+    return "Breadth: how many stocks are advancing versus declining; a rally is usually more reliable when participation is broad.";
   }
-  return "Conviction: indica la qualita e la forza del segnale, cioe quanto il movimento appare solido e affidabile.";
+  return "Conviction: the strength and confidence behind a move, indicating how solid and dependable the signal appears.";
 }
 
 // Build the displayed 2005->today timeline and blend latest point with live score.
