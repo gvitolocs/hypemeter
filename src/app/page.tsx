@@ -2035,23 +2035,19 @@ async function loadHomePageDataUncached() {
   });
   const history = buildBacktrackSeries(score);
   const overlayRuntimeKey = `overlay_years_${history.map((h) => h.year).join(",")}`;
+  const cachedOverlay = readRuntimeSnapshotFromDb<MarketYearlyOverlay>(overlayRuntimeKey);
+  const overlayPromise = cachedOverlay
+    ? withSoftTimeout(
+        () =>
+          timedAsync("home:fetchMarketYearlyOverlay", () =>
+            fetchMarketYearlyOverlay(history.map((h) => h.year)),
+          ),
+        HOME_TIMEOUT_OVERLAY_MS,
+        () => cachedOverlay,
+      )
+    : timedAsync("home:fetchMarketYearlyOverlay", () => fetchMarketYearlyOverlay(history.map((h) => h.year)));
   const [marketOverlay, cardTraderBestSellerLive] = await Promise.all([
-    withSoftTimeout(
-      () =>
-        timedAsync("home:fetchMarketYearlyOverlay", () =>
-          fetchMarketYearlyOverlay(history.map((h) => h.year)),
-        ),
-      HOME_TIMEOUT_OVERLAY_MS,
-      () =>
-        readRuntimeSnapshotFromDb<MarketYearlyOverlay>(overlayRuntimeKey) ?? {
-          sp500: history.map(() => 50),
-          btc: history.map(() => 50),
-          nintendo: history.map(() => 50),
-          inflationYoY: history.map(() => 0),
-          inflation: history.map(() => 50),
-          monthly: undefined,
-        },
-    ),
+    overlayPromise,
     withSoftTimeout(
       () => timedAsync("home:fetchCardTraderPokemonBestSeller", () => fetchCardTraderPokemonBestSeller()),
       HOME_TIMEOUT_CARD_MS,
