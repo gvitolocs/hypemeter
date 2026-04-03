@@ -3,10 +3,10 @@ type Props = {
 };
 
 const ZONES = [
-  { label: "Freeze", color: "#1d4ed8" },
-  { label: "Cool", color: "#4f46e5" },
+  { label: "Freeze", color: "#334155" },
+  { label: "Cool", color: "#2563eb" },
   { label: "Build", color: "#06b6d4" },
-  { label: "Warm", color: "#a855f7" },
+  { label: "Warm", color: "#8b5cf6" },
   { label: "Hot", color: "#ec4899" },
   { label: "Euphoria", color: "#fb7185" },
 ] as const;
@@ -69,6 +69,7 @@ export default function HypeGauge({ score }: Props) {
         {ZONES.map((zone, i) => {
           const a0 = Math.PI * (1 - i / ZONES.length);
           const a1 = Math.PI * (1 - (i + 1) / ZONES.length);
+          const zoneOpacity = Math.min(0.98, 0.48 + i * 0.1);
           return (
             <path
               key={zone.label}
@@ -77,7 +78,7 @@ export default function HypeGauge({ score }: Props) {
               stroke={zone.color}
               strokeWidth={strokeW - 2}
               strokeLinecap="butt"
-              opacity={0.95}
+              opacity={zoneOpacity}
             />
           );
         })}

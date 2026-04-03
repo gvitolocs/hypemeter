@@ -2499,12 +2499,12 @@ export default async function Home() {
                 style={{ width: `${score}%` }}
               />
             </div>
-            <div className="mt-3 grid gap-3 lg:grid-cols-2 lg:items-stretch">
+            <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(17rem,0.8fr)] lg:items-stretch">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
                   <div
-                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/60 via-fuchsia-500/55 to-transparent"
-                    style={{ height: `${Math.max(24, narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum"))}%` }}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-300/95 via-fuchsia-500/90 to-violet-500/70 mix-blend-screen"
+                    style={{ height: `${Math.max(38, narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum"))}%` }}
                   />
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
                     <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Momentum</p>
@@ -2515,8 +2515,8 @@ export default async function Home() {
                 </div>
                 <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
                   <div
-                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/60 via-fuchsia-500/55 to-transparent"
-                    style={{ height: `${Math.max(24, narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth"))}%` }}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-300/95 via-fuchsia-500/90 to-violet-500/70 mix-blend-screen"
+                    style={{ height: `${Math.max(38, narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth"))}%` }}
                   />
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
                     <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Breadth</p>
@@ -2527,8 +2527,8 @@ export default async function Home() {
                 </div>
                 <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
                   <div
-                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/60 via-fuchsia-500/55 to-transparent"
-                    style={{ height: `${Math.max(24, narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction"))}%` }}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-300/95 via-fuchsia-500/90 to-violet-500/70 mix-blend-screen"
+                    style={{ height: `${Math.max(38, narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction"))}%` }}
                   />
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
                     <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Conviction</p>
@@ -2538,7 +2538,7 @@ export default async function Home() {
                   </div>
                 </div>
               </div>
-              <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-slate-800/80 p-3 lg:h-full lg:max-w-none">
+              <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-slate-800/80 p-3 lg:h-full lg:max-w-[22rem] lg:justify-self-end">
                 <p className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-slate-400">
                   Live Event Signals
                 </p>
