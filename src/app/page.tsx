@@ -1672,10 +1672,10 @@ function narrativeCardLabel(tag: string, kind: "momentum" | "breadth" | "convict
 
 function narrativeCardExplanation(_tag: string, kind: "momentum" | "breadth" | "conviction"): string {
   if (kind === "momentum") {
-    return "Momentum: quando il mercato mantiene la stessa direzione (rialzo o ribasso) per piu sessioni consecutive.";
+    return "Momentum: tendenza dei prezzi a continuare nella direzione recente; asset forti restano forti e asset deboli restano deboli per un periodo.";
   }
   if (kind === "breadth") {
-    return "Breadth: misura quante componenti del mercato confermano il movimento, non solo pochi titoli isolati.";
+    return "Breadth: misura quante azioni salgono rispetto a quante scendono; una salita e piu solida se partecipano molti titoli.";
   }
   return "Conviction: indica la qualita e la forza del segnale, cioe quanto il movimento appare solido e affidabile.";
 }
