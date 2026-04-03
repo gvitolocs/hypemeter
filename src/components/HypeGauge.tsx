@@ -70,15 +70,15 @@ export default function HypeGauge({ score }: Props) {
   const s = Math.max(0, Math.min(100, animatedScore));
   const cx = 100;
   const cy = 100;
-  const rTrack = 82;
-  const strokeW = 11;
+  const rTrack = 86;
+  const strokeW = 12;
   const needleAngle = Math.PI * (1 - s / 100);
-  const needleLen = 68;
+  const needleLen = 72;
   const tip = polar(cx, cy, needleLen, needleAngle);
   const ticks = [0, 25, 50, 75, 100];
 
   return (
-    <div className="relative flex w-full max-w-[15.5rem] flex-col items-center overflow-visible">
+    <div className="relative flex w-full max-w-[19rem] flex-col items-center overflow-visible">
       <svg
         viewBox="-15 0 230 112"
         className="h-auto w-full shrink-0 overflow-visible drop-shadow-[0_0_20px_rgba(34,211,238,0.08)]"

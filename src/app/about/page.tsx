@@ -86,11 +86,11 @@ export default function AboutPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Creator</p>
             <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-slate-800/70 p-3">
               <a
-                href={profilePhoto.src}
+                href="https://www.linkedin.com/in/gvitolocs/"
                 target="_blank"
                 rel="noreferrer"
                 className="mx-auto block w-fit rounded-xl border border-white/10 bg-slate-700/40 p-1 transition hover:border-cyan-300/60"
-                title="Open full image"
+                title="Open LinkedIn profile"
               >
                 <img
                   src={profilePhoto.src}
@@ -100,7 +100,6 @@ export default function AboutPage() {
               </a>
               <p className="mt-3 text-base font-bold">Giuseppe Vitolo</p>
               <p className="text-xs text-slate-400">@gvitolocs</p>
-              <p className="mt-1 text-[11px] text-slate-500">Click photo to open full quality.</p>
             </div>
             <div className="mt-4 space-y-2 text-sm">
               <a

@@ -1576,13 +1576,6 @@ function computeWindowSentiments(args: {
   return windows;
 }
 
-// Color ramp for the main progress bar by score regime.
-function meterColor(score: number) {
-  if (score >= 70) return "from-fuchsia-500 via-red-500 to-orange-400";
-  if (score >= 40) return "from-cyan-400 via-blue-500 to-purple-500";
-  return "from-slate-400 via-slate-500 to-slate-700";
-}
-
 function narrativeIndicatorLevel(tag: string, kind: "momentum" | "breadth" | "conviction"): number {
   const t = tag.toLowerCase();
   if (kind === "momentum") {
@@ -2480,10 +2473,10 @@ export default async function Home() {
         </ScrollReveal>
 
         <ScrollReveal delayMs={60}>
-          <section className="grid min-w-0 items-stretch gap-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.24fr)_minmax(0,0.76fr)]">
+          <section className="grid min-w-0 items-stretch gap-6 lg:grid-cols-2">
           <div className="h-full rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift sm:p-7">
             {/* Score column + fixed-width semicircular gauge column (room for ticks + needle). */}
-            <div className="grid grid-cols-1 items-start gap-5 min-[420px]:grid-cols-[minmax(0,1fr)_minmax(12.75rem,15.75rem)] min-[420px]:gap-x-6 min-[420px]:gap-y-3 lg:gap-x-10">
+            <div className="grid grid-cols-1 items-start gap-5 min-[420px]:grid-cols-[minmax(0,1fr)_minmax(15rem,19rem)] min-[420px]:gap-x-6 min-[420px]:gap-y-3 lg:gap-x-10">
               <div className="min-w-0 space-y-1 pr-0 sm:pr-1">
                 <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
                   Current Hype
@@ -2503,13 +2496,7 @@ export default async function Home() {
                 <HypeGauge score={score} />
               </div>
             </div>
-            <div className="mt-4 h-4 overflow-hidden rounded-full bg-slate-700 sm:mt-5">
-              <div
-                className={`h-full rounded-full bg-gradient-to-r ${meterColor(score)}`}
-                style={{ width: `${score}%` }}
-              />
-            </div>
-            <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,2.15fr)_minmax(13.5rem,0.55fr)] xl:items-stretch">
+            <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,2.15fr)_minmax(14.5rem,0.65fr)] xl:items-stretch">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
                   {(() => {
