@@ -1,7 +1,12 @@
 import BacktrackMarketSection from "@/components/BacktrackMarketSection";
-import { CardHighlightPanel } from "@/components/CardHighlightPanel";
+import { HomeCardHighlightAsync } from "@/components/HomeCardHighlightAsync";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
 import { HomePageClientCacheWriter } from "@/components/HomePageClientCacheWriter";
+import { HomePokemonHighlightAsync } from "@/components/HomePokemonHighlightAsync";
+import {
+  HomeCardHighlightFallback,
+  HomePokemonHighlightFallback,
+} from "@/components/HomeSpotlightSuspenseFallbacks";
 import { HomeNextUpdateCountdown } from "@/components/HomeNextUpdateCountdown";
 import { HomeReloadButton } from "@/components/HomeReloadButton";
 import HypeGauge from "@/components/HypeGauge";
@@ -37,9 +42,9 @@ import {
   upsertPokemonDayBundleToDb,
   upsertRuntimeSnapshotToDb,
 } from "@/lib/staticDataDb";
-import Image from "next/image";
 import Link from "next/link";
 import { unstable_cache } from "next/cache";
+import { Suspense } from "react";
 
 type NewsItem = {
   title: string;
@@ -2143,11 +2148,6 @@ function rankPokemonSlugsFromNews(items: NewsItem[], catalog: string[], limit = 
     .map(([name]) => name);
 }
 
-function pickBestPokemonSlugFromNews(items: NewsItem[], catalog: string[]): string | null {
-  const ranked = rankPokemonSlugsFromNews(items, catalog, 1);
-  return ranked[0] ?? null;
-}
-
 /**
  * One species per calendar day: hash(date + stable Pokédex order). Salt bumps (v2) reshuffle the calendar
  * without changing the algorithm.
@@ -2207,15 +2207,6 @@ function pickSpotlightArticleForPokemon(
   };
 }
 
-function pokemonPokedexUrl(name: string): string {
-  const slug = normalize(name)
-    .replace(/[^a-z0-9 -]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug ? `https://www.pokemon.com/us/pokedex/${slug}` : "https://www.pokemon.com/us/pokedex/";
-}
-
 async function fetchHomeNewsItemsForPokemonDay(): Promise<NewsItem[]> {
   const responses = await Promise.all(
     [NEWS_URL, NEWS_URL_BACKUP].map((url) =>
@@ -2267,6 +2258,12 @@ const resolvePokemonOfDayBundleCached = unstable_cache(
   ["pokemon-of-day-daily-v1"],
   { revalidate: 24 * 60 * 60 },
 );
+
+/** Used by `HomePokemonHighlightAsync` via dynamic import — same daily bundle as the refresh pipeline. */
+export async function getPokemonSpotlightBundleForHome() {
+  const dayKey = calendarDateIsoInTimeZone("Europe/Rome");
+  return resolvePokemonOfDayBundleCached(dayKey);
+}
 
 async function resolvePokemonOfDay(
   items: NewsItem[],
@@ -3019,39 +3016,17 @@ function buildInstantHomePagePayload(): HomePagePayload {
   };
 }
 
-async function mergePokemonHighlightIfMissing(payload: HomePagePayload): Promise<HomePagePayload> {
-  if (payload.pokemonOfDay) return payload;
-  const pokemonDayKey = calendarDateIsoInTimeZone("Europe/Rome");
-  const bundle = await withSoftTimeout(
-    () => resolvePokemonOfDayBundleCached(pokemonDayKey),
-    HOME_POKEMON_RESOLVE_BUDGET_MS,
-    () => readPokemonBundleFallback(pokemonDayKey),
-  );
-  if (bundle.pokemon) {
-    return {
-      ...payload,
-      pokemonOfDay: bundle.pokemon,
-      pokemonOfDayWinnerSlug: bundle.winnerSlug,
-      pokemonOfDayArticle: bundle.article,
-    };
-  }
-  scheduleHomePageRefresh();
-  return payload;
-}
-
 async function loadHomePageData() {
   const snapshot = readHomePageRuntimeSnapshot();
-  let payload: HomePagePayload;
   if (snapshot) {
     if (Date.now() - snapshot.updatedAtMs >= HOME_PAGE_RUNTIME_STALE_MS) {
       scheduleHomePageRefresh();
     }
-    payload = snapshot.payload;
-  } else {
-    scheduleHomePageRefresh();
-    payload = buildInstantHomePagePayload();
+    return snapshot.payload;
   }
-  return mergePokemonHighlightIfMissing(payload);
+
+  scheduleHomePageRefresh();
+  return buildInstantHomePagePayload();
 }
 
 /** Uncached pipeline — use from `/debug` timing or when bypassing Data Cache. */
@@ -3069,25 +3044,17 @@ export default async function Home() {
     sentiments,
     history,
     marketOverlay,
-    cardTraderBestSeller,
     todayCalendarStats,
     liveEventSignals,
     liveSignalQuality,
     topArticles,
     platformGraph,
-    pokemonOfDay,
-    pokemonOfDayArticle,
     traderNarrative,
     updatedAt,
     structuredData,
   } = await loadHomePageData();
-  const pokemonHighlightHref =
-    pokemonOfDayArticle?.link ?? (pokemonOfDay ? pokemonPokedexUrl(pokemonOfDay.name) : "#");
-  const pokemonHighlightTitle = pokemonOfDayArticle
-    ? `Open spotlight article from ${pokemonOfDayArticle.source}`
-    : pokemonOfDay
-      ? `Open ${pokemonOfDay.name} on Pokemon Pokedex`
-      : "Pokemon highlight";
+  const spotlightDayKey = calendarDateIsoInTimeZone("Europe/Rome");
+  const syncSpotlightBundle = readPokemonBundleFallback(spotlightDayKey);
 
   return (
     <main className="relative min-h-screen min-w-0 max-w-full overflow-x-clip bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">
@@ -3102,7 +3069,7 @@ export default async function Home() {
           score,
           updatedAt,
           computedAt: cacheMeta.computedAt,
-          pokemonImageUrl: pokemonOfDay?.image ?? null,
+          pokemonImageUrl: syncSpotlightBundle.pokemon?.image ?? null,
         }}
       />
       <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 xl:max-w-7xl 2xl:max-w-[min(92rem,100%)]">
@@ -3136,61 +3103,12 @@ export default async function Home() {
                   />
                 </div>
               </div>
-              <CardHighlightPanel cardTraderBestSeller={cardTraderBestSeller} />
-              <a
-                href={pokemonHighlightHref}
-                target="_blank"
-                rel="noreferrer"
-                className="flex h-full w-full max-w-full flex-col rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 lg:w-56 hover:border-cyan-300/50"
-                title={pokemonHighlightTitle}
-              >
-                <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-300">
-                  Pokemon Highlight
-                </p>
-                <div className="mt-2 flex min-h-0 flex-1 flex-col justify-between gap-2">
-                  <div className="flex min-h-0 items-start gap-3">
-                    {pokemonOfDay?.image ? (
-                      <Image
-                        src={`/api/pokemon-highlight-image?url=${encodeURIComponent(pokemonOfDay.image)}`}
-                        alt={pokemonOfDay.name}
-                        width={72}
-                        height={72}
-                        className="h-[72px] w-[72px] shrink-0 rounded-lg bg-slate-900 object-contain p-1.5"
-                        unoptimized
-                        priority
-                      />
-                    ) : (
-                      <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-lg bg-slate-900 text-xs text-slate-400">
-                        N/A
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold leading-snug text-white">
-                        {pokemonOfDay
-                          ? `#${pokemonOfDay.id} ${pokemonOfDay.name}`
-                          : "Daily spotlight unavailable"}
-                      </p>
-                      {pokemonOfDay?.types?.length ? (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {pokemonOfDay.types.map((type) => (
-                            <span
-                              key={type}
-                              className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] text-fuchsia-200"
-                            >
-                              {type}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                  <p className="line-clamp-3 text-[11px] leading-snug text-slate-400">
-                    {pokemonOfDayArticle?.title ??
-                      pokemonOfDayArticle?.summary ??
-                      "Daily spotlight is refreshing from cache. Try Reload in a few seconds."}
-                  </p>
-                </div>
-              </a>
+              <Suspense fallback={<HomeCardHighlightFallback />}>
+                <HomeCardHighlightAsync />
+              </Suspense>
+              <Suspense fallback={<HomePokemonHighlightFallback />}>
+                <HomePokemonHighlightAsync />
+              </Suspense>
             </div>
           </header>
         </ScrollReveal>
