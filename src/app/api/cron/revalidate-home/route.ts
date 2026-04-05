@@ -1,5 +1,5 @@
 import { HYPEMETER_CACHE_TAG_HOME } from "@/lib/homePageCacheConfig";
-import { refreshHomePageRuntimeSnapshot } from "@/app/page";
+import { refreshHomePageRuntimeSnapshot } from "@/lib/homePageRuntimeSnapshot";
 import { revalidateTag } from "next/cache";
 
 export const runtime = "nodejs";

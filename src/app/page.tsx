@@ -16,6 +16,10 @@ import type { MarketSnapshot } from "@/lib/marketSnapshot";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
 import { HOME_PAGE_DATA_CACHE_TTL_SEC } from "@/lib/homePageCacheConfig";
 import {
+  HOME_PAGE_RUNTIME_SNAPSHOT_KEY,
+  refreshHomePageRuntimeSnapshot,
+} from "@/lib/homePageRuntimeSnapshot";
+import {
   fetchPokemonByIdentifier,
   fetchPokemonNameCatalog,
   rankPokemonMatchesFromSources,
@@ -177,7 +181,6 @@ const HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY = "home_news_items_last_good_v1";
 const HOME_NEWS_ITEMS_CACHE_KEY_V2 = "home_news_items_v2";
 const HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY_V2 = "home_news_items_last_good_v2";
 const HOME_LIVE_EVENT_SIGNALS_CACHE_KEY = "home_live_event_signals_v1";
-const HOME_PAGE_RUNTIME_SNAPSHOT_KEY = "home_page_payload_v1";
 const HOME_CARD_HIGHLIGHT_CACHE_KEY = "home_card_highlight_v1";
 const HOME_CARD_HIGHLIGHT_LAST_GOOD_CACHE_KEY = "home_card_highlight_last_good_v1";
 const MARKET_SNAPSHOT_CACHE_KEY = "market_snapshot";
@@ -2776,15 +2779,6 @@ function scheduleHomePageRefresh() {
   })();
 }
 
-async function refreshHomePageRuntimeSnapshot() {
-  const fresh = await loadHomePageDataUncached();
-  upsertRuntimeSnapshotToDb(HOME_PAGE_RUNTIME_SNAPSHOT_KEY, {
-    payload: fresh,
-    updatedAtMs: Date.now(),
-  } as HomePageRuntimeSnapshot);
-  return fresh;
-}
-
 function buildInstantHomePagePayload(): HomePagePayload {
   const cachedNewsV2 = asNewsCachePayload(
     readRuntimeSnapshotFromDb<NewsCachePayload>(HOME_NEWS_ITEMS_CACHE_KEY_V2),
@@ -3038,8 +3032,6 @@ async function loadHomePageData() {
 
 /** Uncached pipeline — use from `/debug` timing or when bypassing Data Cache. */
 export { loadHomePageDataUncached };
-/** Shared runtime snapshot warmer used by cron/manual refresh endpoints. */
-export { refreshHomePageRuntimeSnapshot };
 
 export default async function Home() {
   const {
