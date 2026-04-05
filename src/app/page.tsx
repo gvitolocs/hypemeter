@@ -6,7 +6,11 @@ import { HomeNextUpdateCountdown } from "@/components/HomeNextUpdateCountdown";
 import { HomeReloadButton } from "@/components/HomeReloadButton";
 import HypeGauge from "@/components/HypeGauge";
 import ScrollReveal from "@/components/ScrollReveal";
-import { fetchMarketYearlyOverlay, type MarketYearlyOverlay } from "@/lib/marketBacktrack";
+import {
+  buildMarketYearlyOverlayFromDb,
+  fetchMarketYearlyOverlay,
+  type MarketYearlyOverlay,
+} from "@/lib/marketBacktrack";
 import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
@@ -19,8 +23,10 @@ import {
 import { logTimingTotal, timedAsync } from "@/lib/serverTiming";
 import {
   readBacktrackBaselineFromDb,
+  readHypeDailyScoreHistoryFromDb,
   readPokemonDayBundleFromDb,
   readRuntimeSnapshotFromDb,
+  upsertHypeDailyScoreToDb,
   upsertPokemonDayBundleToDb,
   upsertRuntimeSnapshotToDb,
 } from "@/lib/staticDataDb";
@@ -1863,6 +1869,9 @@ function componentExplainHref(id: string) {
 }
 
 function buildOverlayFallbackFromHistory(history: YearScore[]): MarketYearlyOverlay {
+  const years = history.map((row) => row.year);
+  const fromDb = buildMarketYearlyOverlayFromDb(years);
+  if (fromDb) return fromDb;
   const base = history.map((row) => clampScore(row.score));
   return {
     sp500: [...base],
@@ -1873,21 +1882,56 @@ function buildOverlayFallbackFromHistory(history: YearScore[]): MarketYearlyOver
   };
 }
 
+function parseYearFromDayKey(dayKey: string): number | null {
+  const y = Number(dayKey.slice(0, 4));
+  return Number.isFinite(y) && y >= 2000 && y <= 2100 ? y : null;
+}
+
 // Build the displayed 2005->today timeline and blend latest point with live score.
 function buildBacktrackSeries(liveScore: number): YearScore[] {
   const currentYear = new Date().getFullYear();
   const baselines = readBacktrackBaselineFromDb();
   const fallbackBaseline = baselines.get(2025) ?? 69;
+  const historyDaily = readHypeDailyScoreHistoryFromDb();
+  const byYear = new Map<number, { sum: number; count: number; latestDay: string; latestScore: number }>();
+  for (const row of historyDaily) {
+    const year = parseYearFromDayKey(row.dayKey);
+    if (year === null) continue;
+    const prev = byYear.get(year);
+    if (!prev) {
+      byYear.set(year, {
+        sum: row.score,
+        count: 1,
+        latestDay: row.dayKey,
+        latestScore: row.score,
+      });
+      continue;
+    }
+    const latest = row.dayKey > prev.latestDay ? { day: row.dayKey, score: row.score } : null;
+    byYear.set(year, {
+      sum: prev.sum + row.score,
+      count: prev.count + 1,
+      latestDay: latest?.day ?? prev.latestDay,
+      latestScore: latest?.score ?? prev.latestScore,
+    });
+  }
 
   const data: YearScore[] = [];
   for (let year = 2005; year <= currentYear; year += 1) {
     const baseline = baselines.get(year) ?? fallbackBaseline;
-    data.push({ year, score: clampScore(baseline) });
+    const yearHistory = byYear.get(year);
+    if (yearHistory && yearHistory.count > 0) {
+      const yearAverage = yearHistory.sum / yearHistory.count;
+      // Preserve long-run shape but anchor each year to persisted runtime history.
+      data.push({ year, score: clampScore(yearAverage * 0.75 + baseline * 0.25) });
+    } else {
+      data.push({ year, score: clampScore(baseline) });
+    }
   }
 
   if (data.length > 0) {
     const last = data[data.length - 1];
-    last.score = clampScore(last.score * 0.45 + liveScore * 0.55);
+    last.score = clampScore(last.score * 0.35 + liveScore * 0.65);
   }
   return data;
 }
@@ -2438,6 +2482,7 @@ async function loadHomePageDataUncached() {
     socialPulse,
     socialTraffic,
   });
+  upsertHypeDailyScoreToDb(calendarDateIsoInTimeZone("Europe/Rome"), score);
   const cycle30 = buildThirtyYearCycle(new Date().getFullYear());
   const sentiments = computeWindowSentiments({
     score,

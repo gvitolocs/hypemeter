@@ -136,6 +136,11 @@ function ensureSchemaRuntime(db: Database.Database) {
       payload_json TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS hype_daily_score (
+      day_key TEXT PRIMARY KEY,
+      score REAL NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 }
 
@@ -396,4 +401,25 @@ export function upsertRuntimeSnapshotToDb(key: string, payload: unknown) {
       payload_json = excluded.payload_json,
       updated_at = excluded.updated_at
   `).run(key, JSON.stringify(payload), new Date().toISOString());
+}
+
+export function upsertHypeDailyScoreToDb(dayKey: string, score: number) {
+  const db = getDb("runtime");
+  db.prepare(`
+    INSERT INTO hype_daily_score (day_key, score, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(day_key) DO UPDATE SET
+      score = excluded.score,
+      updated_at = excluded.updated_at
+  `).run(dayKey, score, new Date().toISOString());
+}
+
+export function readHypeDailyScoreHistoryFromDb(): Array<{ dayKey: string; score: number }> {
+  const db = getDb("runtime");
+  const rows = db
+    .prepare("SELECT day_key, score FROM hype_daily_score ORDER BY day_key ASC")
+    .all() as Array<{ day_key: string; score: number }>;
+  return rows
+    .filter((row) => typeof row.day_key === "string" && Number.isFinite(row.score))
+    .map((row) => ({ dayKey: row.day_key, score: row.score }));
 }

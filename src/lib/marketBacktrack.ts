@@ -699,6 +699,109 @@ export function normalizeTo100(values: number[], options?: NormalizeTo100Options
   return values.map((v) => ((v - min) / (max - min)) * 100);
 }
 
+function mergeYearlyFromDbSymbols(symbols: string[]): YearlyCloseMap {
+  let merged: YearlyCloseMap = new Map();
+  for (const symbol of symbols) {
+    merged = mergeYearlyMaps(readStooqYearlyCloseFromDb(symbol), merged);
+  }
+  return merged;
+}
+
+function mergeMonthlyFromDbSymbols(symbols: string[]): MonthlyCloseMap {
+  let merged: MonthlyCloseMap = new Map();
+  for (const symbol of symbols) {
+    merged = mergeMonthlyMaps(readStooqMonthlyCloseFromDb(symbol), merged);
+  }
+  return merged;
+}
+
+function interpolateMonthlyFromYearlyNormalized(
+  years: number[],
+  yearlyNormalized: number[],
+  labels: string[],
+): number[] {
+  if (labels.length === 0 || years.length === 0 || yearlyNormalized.length !== years.length) return [];
+  const idxByYear = new Map<number, number>();
+  years.forEach((y, idx) => idxByYear.set(y, idx));
+  return labels.map((label) => {
+    const y = Number(label.slice(0, 4));
+    const m = Number(label.slice(5, 7));
+    if (!Number.isFinite(y) || !Number.isFinite(m)) return 50;
+    const idx = idxByYear.get(y);
+    if (idx === undefined) return yearlyNormalized[yearlyNormalized.length - 1] ?? 50;
+    const curr = yearlyNormalized[idx] ?? 50;
+    const prev = idx > 0 ? (yearlyNormalized[idx - 1] ?? curr) : curr;
+    const t = Math.max(1, Math.min(12, m)) / 12;
+    return prev + (curr - prev) * t;
+  });
+}
+
+/** DB-only overlay builder: no network calls, used for instant async-first first paint. */
+export function buildMarketYearlyOverlayFromDb(years: number[]): MarketYearlyOverlay | null {
+  if (years.length === 0) return null;
+
+  let spYearly = mergeYearlyFromDbSymbols(["^spx", "spx", "spy.us"]);
+  let btcYearly = mergeYearlyFromDbSymbols(["btcusd", "btcusd.v"]);
+  let ntYearly = mergeYearlyFromDbSymbols(["ntdoy.us", "ntdoy", "7974.jp"]);
+  const cpiYoYMap = loadStaticCpiForChartYears(years);
+
+  let spAligned = alignYearSeries(years, spYearly);
+  let btcAligned = alignYearSeries(years, btcYearly);
+  let ntAligned = alignYearSeries(years, ntYearly);
+
+  if (!seriesHasVariance(spAligned)) {
+    spYearly = mergeYearlyMaps(pickStaticYearlyFallbackMap(years, STATIC_YEARLY_CLOSES_SP500), spYearly);
+    spAligned = alignYearSeries(years, spYearly);
+  }
+  if (!seriesHasVariance(btcAligned)) {
+    btcYearly = mergeYearlyMaps(pickStaticYearlyFallbackMap(years, STATIC_YEARLY_CLOSES_BTC), btcYearly);
+    btcAligned = alignYearSeries(years, btcYearly);
+  }
+  if (!seriesHasVariance(ntAligned)) {
+    ntYearly = mergeYearlyMaps(pickStaticYearlyFallbackMap(years, STATIC_YEARLY_CLOSES_NINTENDO), ntYearly);
+    ntAligned = alignYearSeries(years, ntYearly);
+  }
+
+  const sp500 = normalizeTo100(spAligned, { degenerateBias: 0 });
+  const btc = normalizeTo100(btcAligned, { degenerateBias: 0.55 });
+  const nintendo = normalizeTo100(ntAligned, { degenerateBias: -0.55 });
+  const inflationYoY = alignYearSeries(years, cpiYoYMap);
+  const inflation = normalizeTo100(inflationYoY, { degenerateBias: 0.25 });
+
+  const monthLabels = buildRecentMonthLabels(24);
+  const spMonthlyMap = mergeMonthlyFromDbSymbols(["^spx", "spx", "spy.us"]);
+  const btcMonthlyMap = mergeMonthlyFromDbSymbols(["btcusd", "btcusd.v"]);
+  const ntMonthlyMap = mergeMonthlyFromDbSymbols(["ntdoy.us", "ntdoy", "7974.jp"]);
+
+  const sp500Monthly = hasRecentMonthlyCoverage(spMonthlyMap, monthLabels)
+    ? normalizeTo100(alignMonthSeries(monthLabels, spMonthlyMap), { degenerateBias: 0 })
+    : interpolateMonthlyFromYearlyNormalized(years, sp500, monthLabels);
+  const btcMonthly = hasRecentMonthlyCoverage(btcMonthlyMap, monthLabels)
+    ? normalizeTo100(alignMonthSeries(monthLabels, btcMonthlyMap), { degenerateBias: 0.55 })
+    : interpolateMonthlyFromYearlyNormalized(years, btc, monthLabels);
+  const nintendoMonthly = hasRecentMonthlyCoverage(ntMonthlyMap, monthLabels)
+    ? normalizeTo100(alignMonthSeries(monthLabels, ntMonthlyMap), { degenerateBias: -0.55 })
+    : interpolateMonthlyFromYearlyNormalized(years, nintendo, monthLabels);
+  const monthlyInflationYoY = monthLabels.map((label) => cpiYoYMap.get(Number(label.slice(0, 4))) ?? 0);
+  const monthlyInflation = normalizeTo100(monthlyInflationYoY, { degenerateBias: 0.25 });
+
+  return {
+    sp500,
+    btc,
+    nintendo,
+    inflationYoY,
+    inflation,
+    monthly: {
+      labels: monthLabels,
+      sp500: sp500Monthly,
+      btc: btcMonthly,
+      nintendo: nintendoMonthly,
+      inflationYoY: monthlyInflationYoY,
+      inflation: monthlyInflation,
+    },
+  };
+}
+
 const lastGoodOverlayByYears = new Map<string, MarketYearlyOverlay>();
 
 function yearsKey(years: number[]): string {
