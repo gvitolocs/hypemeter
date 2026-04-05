@@ -2054,11 +2054,11 @@ function pubDateMs(item: NewsItem) {
   return Number.isNaN(t) ? 0 : t;
 }
 
-/** Minimum weighted score to count a name as a real mention (title+summary only). */
-const FEED_POKEMON_MENTION_FLOOR = 3;
+/** Minimum weighted score to count a name as a real mention (title+summary+source context). */
+const FEED_POKEMON_MENTION_FLOOR = 2.2;
 
 /** Min aggregate weighted score across headlines to prefer “news Pokémon” over the daily hash. */
-const NEWS_POD_MIN_AGGREGATE = 8;
+const NEWS_POD_MIN_AGGREGATE = 5.5;
 
 function extractPokemonMentionsFromText(
   sources: Array<{ text: string; weight: number }>,
@@ -2111,31 +2111,36 @@ function calendarDateIsoInTimeZone(timeZone: string): string {
  * Best Pokémon slug from current headlines (aggregate weighted mentions). Used when buzz is strong enough
  * so the featured species tracks the news, not only the calendar hash.
  */
-function pickBestPokemonSlugFromNews(items: NewsItem[], catalog: string[]): string | null {
-  if (items.length === 0) return null;
+function rankPokemonSlugsFromNews(items: NewsItem[], catalog: string[], limit = 6): string[] {
+  if (items.length === 0) return [];
   const aggregate = new Map<string, number>();
   for (const item of items) {
+    const recencyWeight = hoursAgo(item.pubDate) <= 24 ? 1.35 : hoursAgo(item.pubDate) <= 72 ? 1.15 : 1;
+    const trustWeight = 1 + Math.max(-0.25, Math.min(0.35, sourceQuality(item.source) * 0.06));
     const ranked = rankPokemonMatchesFromSources(
-      [{ text: item.title, weight: 2.5 }, { text: item.summary, weight: 1.6 }],
+      [
+        { text: item.title, weight: 2.8 },
+        { text: item.summary, weight: 1.8 },
+        { text: item.source, weight: 0.9 },
+        { text: item.link, weight: 0.7 },
+      ],
       catalog,
     );
     for (const { name, score } of ranked) {
       if (score < FEED_POKEMON_MENTION_FLOOR) continue;
-      aggregate.set(name, (aggregate.get(name) ?? 0) + score);
+      aggregate.set(name, (aggregate.get(name) ?? 0) + score * recencyWeight * trustWeight);
     }
   }
-  let bestSlug: string | null = null;
-  let bestTotal = 0;
-  for (const [name, total] of aggregate) {
-    if (total < NEWS_POD_MIN_AGGREGATE) continue;
-    if (total > bestTotal) {
-      bestTotal = total;
-      bestSlug = name;
-    } else if (total === bestTotal && bestSlug !== null && name.localeCompare(bestSlug) < 0) {
-      bestSlug = name;
-    }
-  }
-  return bestSlug;
+  return Array.from(aggregate.entries())
+    .filter(([, total]) => total >= NEWS_POD_MIN_AGGREGATE)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([name]) => name);
+}
+
+function pickBestPokemonSlugFromNews(items: NewsItem[], catalog: string[]): string | null {
+  const ranked = rankPokemonSlugsFromNews(items, catalog, 1);
+  return ranked[0] ?? null;
 }
 
 /**
@@ -2264,8 +2269,8 @@ async function resolvePokemonOfDay(
 ): Promise<{ pokemon: PokemonOfDay | null; winnerSlug: string | null }> {
   const dateIso = calendarDateIsoInTimeZone("Europe/Rome");
 
-  const newsSlug = pickBestPokemonSlugFromNews(items, catalog);
-  if (newsSlug) {
+  const newsCandidates = rankPokemonSlugsFromNews(items, catalog, 5);
+  for (const newsSlug of newsCandidates) {
     const pokemon = await fetchPokemonByIdentifier(newsSlug);
     if (pokemon) return { pokemon, winnerSlug: newsSlug };
   }
