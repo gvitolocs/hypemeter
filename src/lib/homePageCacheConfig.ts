@@ -12,3 +12,10 @@ export const CARD_TRADER_HIGHLIGHT_CACHE_SEC = HYPEMETER_DATA_REVALIDATE_SEC;
 
 /** `unstable_cache` + `revalidateTag` — invalidate together from cron. */
 export const HYPEMETER_CACHE_TAG_HOME = "hypemeter-home";
+
+/**
+ * Budget for `resolvePokemonOfDayBundleCached` (RSS + catalog + PokeAPI). Sub-second
+ * timeouts almost always lose the race on cold serverless, leaving the highlight empty
+ * until a later refresh; 12s matches other cold home fetches.
+ */
+export const HOME_POKEMON_RESOLVE_BUDGET_MS = 12_000;

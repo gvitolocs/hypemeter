@@ -14,7 +14,10 @@ import {
 import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
-import { HOME_PAGE_DATA_CACHE_TTL_SEC } from "@/lib/homePageCacheConfig";
+import {
+  HOME_PAGE_DATA_CACHE_TTL_SEC,
+  HOME_POKEMON_RESOLVE_BUDGET_MS,
+} from "@/lib/homePageCacheConfig";
 import {
   HOME_PAGE_RUNTIME_SNAPSHOT_KEY,
   refreshHomePageRuntimeSnapshot,
@@ -192,7 +195,6 @@ const HOME_TIMEOUT_SOCIAL_MS = 1000;
 const HOME_TIMEOUT_OVERLAY_MS = 900;
 const HOME_TIMEOUT_CARD_WARM_MS = 900;
 const HOME_TIMEOUT_CARD_COLD_MS = 9_000;
-const HOME_TIMEOUT_POKEMON_MS = 800;
 const HOME_PAGE_RUNTIME_STALE_MS = HOME_PAGE_DATA_CACHE_TTL_SEC * 1000;
 let homePageRefreshInFlight: Promise<void> | null = null;
 
@@ -2668,7 +2670,7 @@ async function loadHomePageDataUncached() {
   const pokemonDayKey = calendarDateIsoInTimeZone("Europe/Rome");
   const pokemonBundle = await withSoftTimeout(
     () => timedAsync("home:resolvePokemonOfDayDailyCached", () => resolvePokemonOfDayBundleCached(pokemonDayKey)),
-    HOME_TIMEOUT_POKEMON_MS,
+    HOME_POKEMON_RESOLVE_BUDGET_MS,
     () => readPokemonBundleFallback(pokemonDayKey),
   );
   const pokemonOfDay = pokemonBundle.pokemon;
@@ -3017,17 +3019,39 @@ function buildInstantHomePagePayload(): HomePagePayload {
   };
 }
 
+async function mergePokemonHighlightIfMissing(payload: HomePagePayload): Promise<HomePagePayload> {
+  if (payload.pokemonOfDay) return payload;
+  const pokemonDayKey = calendarDateIsoInTimeZone("Europe/Rome");
+  const bundle = await withSoftTimeout(
+    () => resolvePokemonOfDayBundleCached(pokemonDayKey),
+    HOME_POKEMON_RESOLVE_BUDGET_MS,
+    () => readPokemonBundleFallback(pokemonDayKey),
+  );
+  if (bundle.pokemon) {
+    return {
+      ...payload,
+      pokemonOfDay: bundle.pokemon,
+      pokemonOfDayWinnerSlug: bundle.winnerSlug,
+      pokemonOfDayArticle: bundle.article,
+    };
+  }
+  scheduleHomePageRefresh();
+  return payload;
+}
+
 async function loadHomePageData() {
   const snapshot = readHomePageRuntimeSnapshot();
+  let payload: HomePagePayload;
   if (snapshot) {
     if (Date.now() - snapshot.updatedAtMs >= HOME_PAGE_RUNTIME_STALE_MS) {
       scheduleHomePageRefresh();
     }
-    return snapshot.payload;
+    payload = snapshot.payload;
+  } else {
+    scheduleHomePageRefresh();
+    payload = buildInstantHomePagePayload();
   }
-
-  scheduleHomePageRefresh();
-  return buildInstantHomePagePayload();
+  return mergePokemonHighlightIfMissing(payload);
 }
 
 /** Uncached pipeline — use from `/debug` timing or when bypassing Data Cache. */
@@ -3142,7 +3166,9 @@ export default async function Home() {
                     )}
                     <div className="min-w-0">
                       <p className="text-sm font-bold leading-snug text-white">
-                        {pokemonOfDay ? `#${pokemonOfDay.id} ${pokemonOfDay.name}` : "Daily Pokemon loading..."}
+                        {pokemonOfDay
+                          ? `#${pokemonOfDay.id} ${pokemonOfDay.name}`
+                          : "Daily spotlight unavailable"}
                       </p>
                       {pokemonOfDay?.types?.length ? (
                         <div className="mt-1 flex flex-wrap gap-1">
