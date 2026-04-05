@@ -614,6 +614,28 @@ function weightedSignalHitsAcrossItems(items: NewsItem[], signals: WeightedHeadl
   return total;
 }
 
+function computePsaSignalStats(items: NewsItem[]) {
+  if (items.length === 0) return { hits: 0, recentHits: 0, intensity: 0 };
+  let hits = 0;
+  let recentHits = 0;
+  for (const item of items) {
+    const text = normalize(`${item.title} ${item.summary} ${item.source}`);
+    let perItem = 0;
+    if (/\bpsa\b/.test(text)) perItem += 1.25;
+    if (/\bpsa\s*(10|9|8|grade|graded)\b/.test(text)) perItem += 1.15;
+    if (/\b(pop report|population report|gem mint|slabbed|certified|grading)\b/.test(text)) perItem += 0.95;
+    if (/\b(auction|record sale|all[- ]time high|premium)\b/.test(text)) perItem += 0.7;
+    if (perItem <= 0) continue;
+    const bounded = Math.min(3.8, perItem);
+    hits += bounded;
+    if (hoursAgo(item.pubDate) <= 36) recentHits += bounded * 1.15;
+  }
+  const density = hits / Math.max(1, items.length * 0.45);
+  const recency = recentHits / Math.max(1, items.length * 0.4);
+  const intensity = clamp01(Math.tanh(density * 0.9) * 0.62 + Math.tanh(recency * 0.95) * 0.38);
+  return { hits, recentHits, intensity };
+}
+
 function extractLiveEventSignals(items: NewsItem[], limit = 12) {
   const titles = items.map((item) => item.title);
   const text = titles.join(" | ");
@@ -1503,11 +1525,16 @@ function summarizeHype(
   const uniqueSources = new Set(items.map((item) => normalize(item.source || "Unknown"))).size;
   const availabilityHits = weightedSignalHitsAcrossItems(items, AVAILABILITY_SIGNAL_PATTERNS);
   const productStressHits = weightedSignalHitsAcrossItems(items, PRODUCT_STRESS_SIGNAL_PATTERNS);
+  const psaSignals = computePsaSignalStats(items);
   const coverage = clamp01(Math.log10(items.length + 1) / Math.log10(26));
   const sourceSpread = clamp01((uniqueSources - 1) / 7);
   const recencyCoverage = hasNews ? clamp01(recent24 / Math.max(3, items.length * 0.8)) : 0;
   const confidence = hasNews ? clamp01(0.32 + coverage * 0.36 + sourceSpread * 0.32) : 0;
   const activityBoost = Math.min(13, Math.log10(recent24 + 1) * 10.5);
+  // PSA-heavy headlines (grading, pop reports, PSA 10 chatter) can sharply move TCG heat.
+  const psaHeatBoost = hasNews
+    ? Math.tanh(psaSignals.intensity * 1.7) * 28 + Math.min(10, psaSignals.hits * 1.4)
+    : 0;
 
   // "Density over headlines" keeps values comparable regardless of news volume.
   const availabilityDensity = hasNews ? availabilityHits / Math.max(3, items.length * 1.25) : 0;
@@ -1519,7 +1546,8 @@ function summarizeHype(
     50 +
     Math.tanh((availabilityDensity - 0.45) * 4.0) * 34 +
     recencyCoverage * 11 +
-    activityBoost * 0.5;
+    activityBoost * 0.5 +
+    psaHeatBoost * 0.55;
   const availabilityPressureScore = hasNews
     ? clampScore(50 + (availabilityRaw - 50) * (0.52 + confidence * 0.62))
     : 34;
@@ -1529,7 +1557,8 @@ function summarizeHype(
     Math.tanh((productStressDensity - 0.38) * 4.2) * 35 +
     Math.tanh((availabilityDensity - 0.5) * 2.6) * 10 +
     recencyCoverage * 10 +
-    activityBoost * 0.45;
+    activityBoost * 0.45 +
+    psaHeatBoost * 0.62;
   const productStressScore = hasNews
     ? clampScore(50 + (productStressRaw - 50) * (0.5 + confidence * 0.66))
     : 32;
@@ -1550,7 +1579,10 @@ function summarizeHype(
     ? Math.max(searchSwing, Math.min(activityFloor, 55))
     : socialSearchBlend;
   const marketMomentumScore = clampScore(
-    50 + (external.marketMomentum - 50) * 1.18 + (external.socialPulse.momentumScore - 50) * 0.12,
+    50 +
+      (external.marketMomentum - 50) * 1.18 +
+      (external.socialPulse.momentumScore - 50) * 0.12 +
+      psaHeatBoost * 0.18,
   );
   const releaseCatalystScore = clampScore(
     external.eventCatalyst * 0.78 +
@@ -1583,15 +1615,15 @@ function summarizeHype(
     clampScore(50 + (value - 50) * multiplier);
 
   const searchInterestResponsive = clampScore(
-    amplifyFromNeutral(searchInterestScore, 1.2) + socialSpikeAdjustment * 0.35,
+    amplifyFromNeutral(searchInterestScore, 1.2) + socialSpikeAdjustment * 0.35 + psaHeatBoost * 0.1,
   );
   const marketMomentumResponsive = amplifyFromNeutral(marketMomentumScore, 1.2);
   const availabilityResponsive = amplifyFromNeutral(availabilityPressureScore, 1.28);
   const releaseResponsive = clampScore(
-    amplifyFromNeutral(releaseCatalystScore, 1.18) + socialSpikeAdjustment * 0.45,
+    amplifyFromNeutral(releaseCatalystScore, 1.18) + socialSpikeAdjustment * 0.45 + psaHeatBoost * 0.16,
   );
   const communityResponsive = clampScore(
-    amplifyFromNeutral(communitySentimentScore, 1.15) + socialSpikeAdjustment * 0.4,
+    amplifyFromNeutral(communitySentimentScore, 1.15) + socialSpikeAdjustment * 0.4 + psaHeatBoost * 0.12,
   );
   const productStressResponsive = amplifyFromNeutral(productStressScore, 1.26);
 
@@ -1648,7 +1680,7 @@ function summarizeHype(
 
   // Weighted master score plus community/market sub-indices used by the UI.
   const baseScore = components.reduce((sum, component) => sum + component.score * component.weight, 0);
-  const score = clampScore(baseScore + socialSpikeAdjustment * 0.55);
+  const score = clampScore(baseScore + socialSpikeAdjustment * 0.55 + psaHeatBoost * 0.24);
   const communityComponents = components.filter((component) => component.group === "community");
   const marketComponents = components.filter((component) => component.group === "market");
   const communityScore = clampScore(
