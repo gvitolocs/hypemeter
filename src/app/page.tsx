@@ -600,6 +600,8 @@ function parseNews(xml: string): NewsItem[] {
 function siteBaseUrl() {
   const configured = process.env.SITE_URL?.trim();
   if (configured) return configured.replace(/\/$/, "");
+  // Production alias is always public; deployment URLs can be auth-protected.
+  if (process.env.VERCEL === "1") return "https://monmeter.vercel.app";
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel.replace(/\/$/, "")}`;
   return "http://localhost:3000";
