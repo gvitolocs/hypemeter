@@ -22,6 +22,7 @@ import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSelle
 import {
   HOME_PAGE_DATA_CACHE_TTL_SEC,
   HOME_POKEMON_RESOLVE_BUDGET_MS,
+  HYPEMETER_CACHE_TAG_HOME,
 } from "@/lib/homePageCacheConfig";
 import {
   HOME_PAGE_RUNTIME_SNAPSHOT_KEY,
@@ -3119,12 +3120,20 @@ function buildInstantHomePagePayload(): HomePagePayload {
 }
 
 async function loadHomePageData() {
-  const snapshot = readHomePageRuntimeSnapshot();
-  if (snapshot) {
-    return snapshot.payload;
-  }
-  return buildInstantHomePagePayload();
+  return loadHomePageDataCached();
 }
+
+const loadHomePageDataCached = unstable_cache(
+  async (): Promise<HomePagePayload> => {
+    const snapshot = readHomePageRuntimeSnapshot();
+    if (snapshot && isMeaningfulNewsItems(snapshot.payload.items)) {
+      return snapshot.payload;
+    }
+    return loadHomePageDataUncached();
+  },
+  ["home-page-payload-shared-v1"],
+  { revalidate: HOME_PAGE_DATA_CACHE_TTL_SEC, tags: [HYPEMETER_CACHE_TAG_HOME] },
+);
 
 /** Uncached pipeline — use from `/debug` timing or when bypassing Data Cache. */
 export { loadHomePageDataUncached };
