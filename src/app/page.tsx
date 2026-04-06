@@ -200,6 +200,7 @@ const HOME_TIMEOUT_SOCIAL_MS = 1000;
 const HOME_TIMEOUT_OVERLAY_MS = 900;
 const HOME_TIMEOUT_CARD_WARM_MS = 900;
 const HOME_TIMEOUT_CARD_COLD_MS = 9_000;
+const HOME_TIMEOUT_SNAPSHOT_RECOVERY_MS = 9_000;
 const HOME_PAGE_RUNTIME_STALE_MS = HOME_PAGE_DATA_CACHE_TTL_SEC * 1000;
 let homePageRefreshInFlight: Promise<void> | null = null;
 
@@ -3019,9 +3020,14 @@ function buildInstantHomePagePayload(): HomePagePayload {
 async function loadHomePageData() {
   const snapshot = readHomePageRuntimeSnapshot();
   if (snapshot) {
-    // If snapshot only has hard fallback headlines, keep trying to refresh aggressively.
+    // On serverless, background-only refresh can be interrupted. If snapshot has only fallback
+    // headlines, await one bounded recovery attempt in-request before serving.
     if (!isMeaningfulNewsItems(snapshot.payload.items)) {
-      scheduleHomePageRefresh();
+      return withSoftTimeout(
+        () => refreshHomePageRuntimeSnapshot(),
+        HOME_TIMEOUT_SNAPSHOT_RECOVERY_MS,
+        () => snapshot.payload,
+      );
     }
     if (Date.now() - snapshot.updatedAtMs >= HOME_PAGE_RUNTIME_STALE_MS) {
       scheduleHomePageRefresh();
@@ -3029,8 +3035,15 @@ async function loadHomePageData() {
     return snapshot.payload;
   }
 
-  scheduleHomePageRefresh();
-  return buildInstantHomePagePayload();
+  const instant = buildInstantHomePagePayload();
+  return withSoftTimeout(
+    () => refreshHomePageRuntimeSnapshot(),
+    HOME_TIMEOUT_SNAPSHOT_RECOVERY_MS,
+    () => {
+      scheduleHomePageRefresh();
+      return instant;
+    },
+  );
 }
 
 /** Uncached pipeline — use from `/debug` timing or when bypassing Data Cache. */
