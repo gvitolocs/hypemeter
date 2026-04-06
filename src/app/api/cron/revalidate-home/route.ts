@@ -21,8 +21,12 @@ export async function GET(request: Request) {
   revalidateTag(HYPEMETER_CACHE_TAG_HOME, "default");
   try {
     await refreshHomePageRuntimeSnapshot();
-  } catch {
-    /* keep old snapshot if upstreams fail */
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "refresh_failed";
+    return Response.json(
+      { ok: false, error: message, revalidated: HYPEMETER_CACHE_TAG_HOME, at: now.toISOString() },
+      { status: 500 },
+    );
   }
   return Response.json({ ok: true, revalidated: HYPEMETER_CACHE_TAG_HOME, at: now.toISOString() });
 }

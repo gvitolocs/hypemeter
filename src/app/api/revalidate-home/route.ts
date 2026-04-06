@@ -14,8 +14,12 @@ export async function POST() {
   revalidatePath("/");
   try {
     await refreshHomePageRuntimeSnapshot();
-  } catch {
-    /* keep old snapshot; client still receives existing cached payload */
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "refresh_failed";
+    return Response.json(
+      { ok: false, error: message, revalidated: HYPEMETER_CACHE_TAG_HOME, at: new Date().toISOString() },
+      { status: 500 },
+    );
   }
   return Response.json({ ok: true, revalidated: HYPEMETER_CACHE_TAG_HOME, at: new Date().toISOString() });
 }
