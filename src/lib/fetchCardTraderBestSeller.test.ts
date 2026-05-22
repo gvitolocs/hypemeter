@@ -28,12 +28,15 @@ describe("sanitizeCardHighlightName", () => {
 });
 
 describe("fetchCardTraderBestSeller", () => {
-  it("prefers Pokoin hot blueprint data for the highlighted card", async () => {
+  it("rotates through Pokoin hot blueprint data for the highlighted card", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
-          blueprints: [{ blueprintId: "316600", name: "Leafeon", set: "Prismatic Evolutions", number: "005/131" }],
+          blueprints: [
+            { blueprintId: "316600", name: "Leafeon", set: "Prismatic Evolutions", number: "005/131" },
+            { blueprintId: "234470", name: "Pikachu", set: "Dark Phantasma", number: "073/071" },
+          ],
           cards: [
             {
               card_id: "316600",
@@ -42,17 +45,24 @@ describe("fetchCardTraderBestSeller", () => {
               card_number: "005/131",
               image_url: "https://cdn.pokoin.com/316600_leafeon-005-131-prismatic-evolutions.jpg",
             },
+            {
+              card_id: "234470",
+              name: "Pikachu",
+              set_name: "Dark Phantasma",
+              card_number: "073/071",
+              image_url: "https://cdn.pokoin.com/234470_pikachu-073-071-dark-phantasma.jpg",
+            },
           ],
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as typeof fetch;
 
     try {
-      const card = await fetchPokoinHotBlueprintCard();
+      const card = await fetchPokoinHotBlueprintCard("1");
       expect(card).toEqual({
-        name: "Leafeon · Prismatic Evolutions · 005/131",
-        imageUrl: "https://cdn.pokoin.com/316600_leafeon-005-131-prismatic-evolutions.jpg",
-        cardUrl: "https://pokoin.com/316600",
+        name: "Pikachu · Dark Phantasma · 073/071",
+        imageUrl: "https://cdn.pokoin.com/234470_pikachu-073-071-dark-phantasma.jpg",
+        cardUrl: "https://pokoin.com/234470",
         fromPrice: "",
       });
     } finally {

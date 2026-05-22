@@ -3,7 +3,6 @@
  */
 
 import { unstable_cache } from "next/cache";
-import { cardHighlightCalendarDayKey } from "@/lib/cardHighlightCalendarDay";
 import {
   CARD_TRADER_HIGHLIGHT_CACHE_SEC,
   HYPEMETER_CACHE_TAG_HOME,
@@ -20,8 +19,7 @@ export type CardTraderBestSeller = {
 export const CARDTRADER_POKEMON_HUB = "https://www.cardtrader.com/en/pokemon";
 
 const JINA_PREFIX = "https://r.jina.ai/";
-const POKOIN_HOT_BLUEPRINTS_URL =
-  "https://pokoin.com/api/marketplace-hot-blueprints?window=24h&limit=1&includeCards=1";
+const POKOIN_HOT_BLUEPRINTS_URL = "https://pokoin.com/api/marketplace-hot-blueprints";
 const FALLBACK_CARD_HIGHLIGHT: CardTraderBestSeller = {
   name: "Pokoin Card Reserve",
   imageUrl: "",
@@ -377,8 +375,60 @@ function firstString(...values: unknown[]): string {
   return "";
 }
 
-export async function fetchPokoinHotBlueprintCard(): Promise<CardTraderBestSeller | null> {
-  const res = await fetch(POKOIN_HOT_BLUEPRINTS_URL, {
+function cardHighlightBucketKey(now = Date.now()): string {
+  return String(Math.floor(now / (CARD_TRADER_HIGHLIGHT_CACHE_SEC * 1000)));
+}
+
+function pickRotatingIndex(length: number, bucketKey: string): number {
+  if (length <= 1) return 0;
+  const n = Number.parseInt(bucketKey, 10);
+  return Number.isFinite(n) ? n % length : 0;
+}
+
+function buildPokoinCardFromRows(
+  card: Record<string, unknown> | undefined,
+  blueprint: Record<string, unknown> | undefined,
+): CardTraderBestSeller | null {
+  const id = firstString(
+    card?.card_id,
+    card?.blueprint_id,
+    card?.id,
+    blueprint?.blueprintId,
+    blueprint?.blueprint_id,
+    blueprint?.id,
+  );
+  const name = firstString(card?.name, blueprint?.name);
+  const imageUrl = firstString(
+    card?.homepageImageUrl,
+    card?.homepage_image_url,
+    card?.image_url,
+    card?.cdn_image_url,
+    card?.preview_image_url,
+    blueprint?.homepageImageUrl,
+    blueprint?.homepage_image_url,
+    blueprint?.imageUrl,
+    blueprint?.image_url,
+  );
+  if (!id || !name) return null;
+
+  const setName = firstString(card?.set_name, card?.set, card?.expansion_name, blueprint?.set);
+  const number = firstString(card?.card_number, card?.number, card?.expansion_number, blueprint?.number);
+  const label = [name, setName, number].filter(Boolean).join(" · ");
+  return {
+    name: label || name,
+    imageUrl,
+    cardUrl: `https://pokoin.com/${encodeURIComponent(id)}`,
+    fromPrice: "",
+  };
+}
+
+async function fetchPokoinHotBlueprintRows(window: "1h" | "24h" | "7d") {
+  const search = new URLSearchParams({
+    window,
+    limit: "10",
+    includeCards: "1",
+  });
+  const res = await fetch(`${POKOIN_HOT_BLUEPRINTS_URL}?${search.toString()}`, {
     cache: "no-store",
     headers: { "user-agent": "Mozilla/5.0 hypemeter-card-highlight" },
     signal: AbortSignal.timeout(12_000),
@@ -389,44 +439,47 @@ export async function fetchPokoinHotBlueprintCard(): Promise<CardTraderBestSelle
     blueprints?: Array<Record<string, unknown>>;
     cards?: Array<Record<string, unknown>>;
   };
-  const card = payload.cards?.[0];
-  const blueprint = payload.blueprints?.[0];
-  const id = firstString(card?.card_id, card?.id, blueprint?.blueprintId, blueprint?.id);
-  const name = firstString(card?.name, blueprint?.name);
-  const imageUrl = firstString(
-    card?.homepageImageUrl,
-    card?.homepage_image_url,
-    card?.image_url,
-    card?.cdn_image_url,
-    card?.preview_image_url,
-    blueprint?.imageUrl,
-    blueprint?.image_url,
-  );
-  if (!id || !name) return null;
-
-  const setName = firstString(card?.set_name, card?.set, blueprint?.set);
-  const number = firstString(card?.card_number, card?.number, blueprint?.number);
-  const label = [name, setName, number].filter(Boolean).join(" · ");
   return {
-    name: label || name,
-    imageUrl,
-    cardUrl: `https://pokoin.com/${encodeURIComponent(id)}`,
-    fromPrice: "",
+    blueprints: payload.blueprints ?? [],
+    cards: payload.cards ?? [],
   };
 }
 
+export async function fetchPokoinHotBlueprintCard(bucketKey = cardHighlightBucketKey()): Promise<CardTraderBestSeller | null> {
+  let cards: Array<Record<string, unknown>> = [];
+  let blueprints: Array<Record<string, unknown>> = [];
+
+  for (const window of ["1h", "24h", "7d"] as const) {
+    const rows = await fetchPokoinHotBlueprintRows(window);
+    if (!rows) continue;
+    cards = rows.cards;
+    blueprints = rows.blueprints;
+    if (Math.max(cards.length, blueprints.length) >= 4 || window === "7d") break;
+  }
+
+  const maxLen = Math.max(cards.length, blueprints.length);
+  if (maxLen === 0) return null;
+
+  const start = pickRotatingIndex(maxLen, bucketKey);
+  for (let offset = 0; offset < maxLen; offset += 1) {
+    const index = (start + offset) % maxLen;
+    const built = buildPokoinCardFromRows(cards[index], blueprints[index]);
+    if (built) return built;
+  }
+  return null;
+}
+
 const fetchCardTraderPokemonBestSellerCached = unstable_cache(
-  async (dayKey: string): Promise<CardTraderBestSeller | null> => {
-    void dayKey;
+  async (bucketKey: string): Promise<CardTraderBestSeller | null> => {
     try {
-      const pokoinCard = await fetchPokoinHotBlueprintCard();
+      const pokoinCard = await fetchPokoinHotBlueprintCard(bucketKey);
       if (pokoinCard) return pokoinCard;
 
       const text = await fetchJinaMarkdown();
       if (!text) return FALLBACK_CARD_HIGHLIGHT;
       const parsed = parseCardTraderBestSellerFromText(text);
       if (parsed?.imageUrl && process.env.DEBUG_CARDTRADER === "1") {
-        dbg("parsed imageUrl host", new URL(parsed.imageUrl).hostname, "day", dayKey);
+        dbg("parsed imageUrl host", new URL(parsed.imageUrl).hostname, "bucket", bucketKey);
       }
       return parsed ?? FALLBACK_CARD_HIGHLIGHT;
     } catch (e) {
@@ -434,13 +487,13 @@ const fetchCardTraderPokemonBestSellerCached = unstable_cache(
       return FALLBACK_CARD_HIGHLIGHT;
     }
   },
-  ["cardtrader-pokemon-best-seller-v3"],
+  ["cardtrader-pokemon-best-seller-v4"],
   { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC, tags: [HYPEMETER_CACHE_TAG_HOME] },
 );
 
 /** Parsed best-seller row; cached with home TTL + `revalidateTag` from cron/reload. */
 export async function fetchCardTraderPokemonBestSeller(): Promise<CardTraderBestSeller | null> {
-  return fetchCardTraderPokemonBestSellerCached(cardHighlightCalendarDayKey());
+  return fetchCardTraderPokemonBestSellerCached(cardHighlightBucketKey());
 }
 
 /** Raw Jina body for debug API (do not log full text in production). */

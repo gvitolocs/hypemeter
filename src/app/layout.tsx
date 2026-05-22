@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import { PokoinFooter } from "@/components/PokoinFooter";
 import "./globals.css";
 
@@ -12,6 +13,8 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+const ADSENSE_CLIENT = "ca-pub-4839405057855605";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://news.pokoin.com"),
@@ -44,12 +47,11 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "https://pokoin.com/favicon.ico", sizes: "any" },
-      { url: "https://pokoin.com/favicon-96x96.png", sizes: "96x96", type: "image/png" },
-      { url: "https://pokoin.com/pokoin-192.png", sizes: "192x192", type: "image/png" },
-      { url: "https://pokoin.com/pokoin-1024.png", sizes: "1024x1024", type: "image/png" },
+      { url: "/pokoin.svg", sizes: "any", type: "image/svg+xml" },
+      { url: "/pokoin-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/pokoin-1024.png", sizes: "1024x1024", type: "image/png" },
     ],
-    apple: [{ url: "https://pokoin.com/pokoin-1024.png", sizes: "1024x1024", type: "image/png" }],
+    apple: [{ url: "/pokoin-1024.png", sizes: "1024x1024", type: "image/png" }],
   },
   openGraph: {
     type: "website",
@@ -77,6 +79,9 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
+  other: {
+    "google-adsense-account": ADSENSE_CLIENT,
+  },
 };
 
 export default function RootLayout({
@@ -90,13 +95,15 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full max-w-full overflow-x-clip antialiased`}
     >
       <head>
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4839405057855605"
-          crossOrigin="anonymous"
-        />
       </head>
       <body className="flex min-h-full min-w-0 max-w-full flex-col overflow-x-clip">
+        <Script
+          id="adsense-auto-ads"
+          strategy="afterInteractive"
+          async
+          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
+          crossOrigin="anonymous"
+        />
         {children}
         <PokoinFooter />
       </body>

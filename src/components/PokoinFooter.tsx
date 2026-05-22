@@ -59,7 +59,7 @@ export function PokoinFooter() {
               <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-slate-900">
                 {/* eslint-disable-next-line @next/next/no-img-element -- shared Pokoin brand asset hosted by the main app. */}
                 <img
-                  src="https://pokoin.com/pokoin-1024.png"
+                  src="/pokoin-1024.png"
                   alt="Pokoin"
                   className="h-full w-full object-contain"
                   loading="lazy"

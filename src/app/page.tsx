@@ -139,6 +139,11 @@ type PokemonOfDayArticle = {
 // run the full external refresh pipeline, otherwise slow upstreams can block the response.
 export const dynamic = "force-dynamic";
 
+const ADSENSE_TOP_SLOT = process.env.NEXT_PUBLIC_ADSENSE_TOP_SLOT?.trim();
+const ADSENSE_MID_SLOT = process.env.NEXT_PUBLIC_ADSENSE_MID_SLOT?.trim();
+const ADSENSE_MARKET_SLOT = process.env.NEXT_PUBLIC_ADSENSE_MARKET_SLOT?.trim();
+const ADSENSE_CALENDAR_SLOT = process.env.NEXT_PUBLIC_ADSENSE_CALENDAR_SLOT?.trim();
+
 /**
  * Pro/Enterprise: up to 60s. **Vercel Hobby caps serverless at ~10s** — keep upstream work bounded
  * (timeouts + parallel fetches) or upgrade / use Edge Pro.
@@ -3272,7 +3277,7 @@ export default async function Home() {
         </ScrollReveal>
 
         <ScrollReveal delayMs={30}>
-          <AdSenseSlot label="Top advertisement" />
+          <AdSenseSlot label="Top advertisement" slot={ADSENSE_TOP_SLOT} />
         </ScrollReveal>
 
         <ScrollReveal delayMs={60}>
@@ -3512,7 +3517,7 @@ export default async function Home() {
         </ScrollReveal>
 
         <ScrollReveal delayMs={75}>
-          <AdSenseSlot label="Mid-page advertisement" />
+          <AdSenseSlot label="Mid-page advertisement" slot={ADSENSE_MID_SLOT} />
         </ScrollReveal>
 
         <ScrollReveal delayMs={90}>
@@ -3526,7 +3531,7 @@ export default async function Home() {
         </ScrollReveal>
 
         <ScrollReveal delayMs={105}>
-          <AdSenseSlot label="Market section advertisement" />
+          <AdSenseSlot label="Market section advertisement" slot={ADSENSE_MARKET_SLOT} />
         </ScrollReveal>
 
         <ScrollReveal delayMs={120}>
@@ -3575,7 +3580,7 @@ export default async function Home() {
         </ScrollReveal>
 
         <ScrollReveal delayMs={165}>
-          <AdSenseSlot label="Calendar advertisement" />
+          <AdSenseSlot label="Calendar advertisement" slot={ADSENSE_CALENDAR_SLOT} />
         </ScrollReveal>
 
         <ScrollReveal delayMs={180}>

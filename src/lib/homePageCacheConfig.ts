@@ -7,8 +7,8 @@ export const HYPEMETER_DATA_REVALIDATE_SEC = 90 * 60;
 /** Stale threshold for the homepage runtime snapshot (seconds). */
 export const HOME_PAGE_DATA_CACHE_TTL_SEC = HYPEMETER_DATA_REVALIDATE_SEC;
 
-/** Card Highlight Jina parse + proxy image bytes — same TTL as home. */
-export const CARD_TRADER_HIGHLIGHT_CACHE_SEC = HYPEMETER_DATA_REVALIDATE_SEC;
+/** Card Highlight should follow Pokoin marketplace activity more closely than the full news payload. */
+export const CARD_TRADER_HIGHLIGHT_CACHE_SEC = 15 * 60;
 
 /** Shared tag for manual/cron invalidation of home-related Next Data Cache entries. */
 export const HYPEMETER_CACHE_TAG_HOME = "hypemeter-home";

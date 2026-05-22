@@ -15,8 +15,12 @@ describe("homePageCacheConfig", () => {
     expect(HYPEMETER_DATA_REVALIDATE_SEC).toBe(90 * 60);
   });
 
-  it("keeps home snapshot and card highlight refresh cadence aligned", () => {
+  it("keeps home snapshot on the global refresh cadence", () => {
     expect(HOME_PAGE_DATA_CACHE_TTL_SEC).toBe(HYPEMETER_DATA_REVALIDATE_SEC);
-    expect(CARD_TRADER_HIGHLIGHT_CACHE_SEC).toBe(HYPEMETER_DATA_REVALIDATE_SEC);
+  });
+
+  it("refreshes Card Highlight more frequently than the full homepage payload", () => {
+    expect(CARD_TRADER_HIGHLIGHT_CACHE_SEC).toBe(15 * 60);
+    expect(CARD_TRADER_HIGHLIGHT_CACHE_SEC).toBeLessThan(HYPEMETER_DATA_REVALIDATE_SEC);
   });
 });

@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         card: null,
-        source: "cardtrader-best-seller",
+        source: "pokoin-hot-blueprints",
         dayKey: cardHighlightCalendarDayKey(),
       },
       {
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
         imageProxyPath,
         imageProxyUrl: absoluteUrl(request, imageProxyPath),
       },
-      source: "cardtrader-best-seller",
+      source: "pokoin-hot-blueprints",
       dayKey: cardHighlightCalendarDayKey(),
     },
     {

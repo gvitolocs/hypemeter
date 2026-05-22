@@ -13,19 +13,25 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "en",
     icons: [
       {
-        src: "https://pokoin.com/pokoin-192.png",
+        src: "/pokoin.svg",
+        sizes: "any",
+        type: "image/svg+xml",
+        purpose: "any",
+      },
+      {
+        src: "/pokoin-192.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "https://pokoin.com/pokoin-512.png",
+        src: "/pokoin-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
       },
       {
-        src: "https://pokoin.com/pokoin-1024.png",
+        src: "/pokoin-1024.png",
         sizes: "1024x1024",
         type: "image/png",
         purpose: "any",
