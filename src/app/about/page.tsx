@@ -1,13 +1,31 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import profilePhoto from "../../../106628254.jpeg";
 
 export const metadata: Metadata = {
-  title: "About",
+  title: "About Us",
   description:
-    "About Pokoin News: Pokemon news, TCG market signals, crypto gaming context, earn trends, news curation and how the hype engine works.",
+    "About Pokoin News: family-safe Pokemon card news, Pokoin marketplace context, collector signals, market snapshots, and transparent hype scoring.",
   alternates: {
     canonical: "/about",
+  },
+  openGraph: {
+    title: "About Us | Pokoin News",
+    description:
+      "Learn how Pokoin News explains Pokemon card demand, marketplace context, collector signals, and update cadence for Pokoin readers.",
+    url: "/about",
+    siteName: "Pokoin News",
+    images: [{ url: "/pokoin-1024.png", width: 1024, height: 1024, alt: "Pokoin" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "About Us | Pokoin News",
+    description:
+      "Family-safe Pokemon card news, Pokoin marketplace context, collector signals, and transparent hype scoring.",
+    images: ["/pokoin-1024.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
@@ -57,14 +75,21 @@ export default function AboutPage() {
         </div>
         <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
           <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30">
-            <p className="text-sm font-semibold tracking-[0.08em] text-fuchsia-300">POKOIN NEWS</p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Pokemon TCG hype, made readable.</h1>
+            <p className="text-sm font-semibold tracking-[0.08em] text-fuchsia-300">ABOUT US</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Pokoin News makes Pokemon card signals readable.</h1>
             <p className="mt-3 text-sm leading-7 text-slate-200">
-              Pokoin News tracks daily Pokemon momentum with a signal mix built from news activity, social/search pulse,
-              and market context. Fast refreshes, clear score components, and visible source logic.
+              Pokoin News is a family-safe signal desk for Pokemon news, card collector context, Pokoin marketplace
+              activity, and broader market momentum. The site turns public headlines, marketplace movement, search
+              interest, and social pulse into readable summaries for collectors, Pokoin users, marketplace watchers,
+              and readers following Pokemon card demand.
+            </p>
+            <p className="mt-3 text-sm leading-7 text-slate-200">
+              Our content standards are simple: original summaries, sourced analysis where useful, clear labeling,
+              and no adult content, hate speech, harassment, graphic material, or misleading financial promises.
+              Market references are informational context, not investment advice.
             </p>
             <div className="mt-5 flex flex-wrap gap-2 text-xs">
-              {["Live Hype", "Market Sidecar", "Backtracking", "Daily Stats", "About"].map((item) => (
+              {["Live Hype", "Market Sidecar", "Card Highlight", "Learn Pages", "Daily Stats"].map((item) => (
                 <span key={item} className="rounded-full border border-white/10 bg-slate-800 px-2.5 py-1 text-slate-200">
                   {item}
                 </span>
@@ -76,6 +101,7 @@ export default function AboutPage() {
                   key={pokemon.name}
                   className="rounded-2xl border border-white/10 bg-slate-800/70 p-2 text-center"
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- PokeAPI artwork is decorative gallery content, not LCP content. */}
                   <img
                     src={pokemon.image}
                     alt={pokemon.name}
@@ -91,48 +117,55 @@ export default function AboutPage() {
           </section>
 
           <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Creator</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Publisher</p>
             <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-slate-800/70 p-3">
               <a
-                href="https://www.linkedin.com/in/gvitolocs/"
+                href="https://pokoin.com/"
                 target="_blank"
                 rel="noreferrer"
                 className="mx-auto block w-fit rounded-xl border border-white/10 bg-slate-700/40 p-1 transition hover:border-cyan-300/60"
-                title="Open LinkedIn profile"
+                title="Open Pokoin"
               >
+                {/* eslint-disable-next-line @next/next/no-img-element -- shared Pokoin brand asset is already optimized in public/. */}
                 <img
-                  src={profilePhoto.src}
-                  alt="Giuseppe Vitolo"
+                  src="/pokoin-1024.png"
+                  alt="Pokoin"
                   className="h-28 w-28 rounded-lg object-contain sm:h-32 sm:w-32"
                 />
               </a>
-              <p className="mt-3 text-base font-bold">Giuseppe Vitolo</p>
-              <p className="text-xs text-slate-400">@gvitolocs</p>
+              <p className="mt-3 text-base font-bold">Pokoin News</p>
+              <p className="text-xs text-slate-400">Pokemon news, card market signals, and ecosystem updates.</p>
             </div>
             <div className="mt-4 space-y-2 text-sm">
+              <Link
+                className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
+                href="/contact"
+              >
+                Contact Us
+              </Link>
               <a
                 className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
-                href="mailto:gvitolocs@gmail.com"
+                href="mailto:contact@pokoin.com"
               >
-                Email: gvitolocs@gmail.com
+                Email: contact@pokoin.com
               </a>
               <a
                 className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
-                href="https://www.linkedin.com/in/gvitolocs/"
+                href="https://pokoin.com/privacy"
               >
-                LinkedIn
+                Privacy Policy
               </a>
               <a
                 className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
-                href="https://x.com/gvitolocs"
+                href="https://pokoin.com/contact"
               >
-                X / Twitter
+                Main Pokoin Contact
               </a>
               <a
                 className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
-                href="https://github.com/gvitolocs"
+                href="https://pokoin.com/"
               >
-                GitHub
+                Pokoin
               </a>
             </div>
           </section>
@@ -145,7 +178,7 @@ export default function AboutPage() {
           />
           <SectionList title="Community Layer" items={["Community Sentiment", "Product Stress / Queue", "Signal Quality"]} />
           <SectionList title="Market Data" items={["S&P 500", "Bitcoin", "Nintendo", "Inflation (CPI YoY)"]} />
-          <SectionList title="Platform" items={["5-hour server cache", "Manual reload", "UTC timestamps", "Daily Pokemon highlight"]} />
+          <SectionList title="Platform" items={["Timed server refreshes", "Manual reload", "Daily stats", "Rotating card highlights"]} />
         </div>
 
         <section className="mt-6 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
@@ -188,11 +221,15 @@ export default function AboutPage() {
               * Stooq, Yahoo Finance, CoinGecko, Binance
             </li>
             <li>* FRED and World Bank datasets (inflation overlays)</li>
-            <li>* PokeAPI and CardTrader for Pokemon/card highlights</li>
+            <li>* PokeAPI and Pokoin marketplace APIs for Pokemon/card highlights</li>
           </ul>
           <p className="mt-3 text-sm leading-7 text-slate-200">
             This site is an independent project and is not affiliated with Nintendo, Game Freak, or The Pokemon
             Company.
+          </p>
+          <p className="mt-3 text-sm leading-7 text-slate-200">
+            The site is maintained with refreshed market snapshots, card highlights, learn pages, daily statistics,
+            and signal pages so readers can understand both current activity and longer-term context.
           </p>
         </section>
 

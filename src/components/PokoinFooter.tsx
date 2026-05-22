@@ -1,5 +1,8 @@
 const footerLinks = {
   explore: [
+    { label: "About Us", href: "/about" },
+    { label: "Contact Us", href: "/contact" },
+    { label: "Privacy Policy", href: "https://pokoin.com/privacy" },
     { label: "Pokoin", href: "https://pokoin.com/" },
     { label: "Marketplace", href: "https://pokoin.com/marketplace" },
     { label: "PokoinScan", href: "https://pokoin.com/scan" },
@@ -83,7 +86,7 @@ export function PokoinFooter() {
             <p className="text-2xl text-amber-300">✓</p>
             <h2 className="mt-3 text-lg font-black text-white">Public by design</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Explorer data, RPC status, reserve proof and wPKN contract references stay one click away.
+              About, contact, privacy, explorer data, RPC status, reserve proof and wPKN references stay one click away.
             </p>
           </div>
         </div>

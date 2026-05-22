@@ -97,12 +97,6 @@ export function pickBestCardImageUrl(candidates: string[]): string {
   return best ?? sorted[0] ?? "";
 }
 
-function looksLikeImageUrl(u: string): boolean {
-  const n = normalizeCardtraderAssetUrl(u);
-  if (!n) return false;
-  return /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(n) || /\/uploads\//i.test(n) || /\/images?\//i.test(n);
-}
-
 function looksLikeCardProductUrl(u: string): boolean {
   const n = normalizeCardtraderAssetUrl(u);
   if (!/cardtrader\.com/i.test(n)) return false;
