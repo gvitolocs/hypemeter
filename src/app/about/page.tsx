@@ -8,25 +8,6 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/about",
   },
-  openGraph: {
-    title: "About Us | Pokoin News",
-    description:
-      "Learn how Pokoin News explains Pokemon card demand, marketplace context, collector signals, and update cadence for Pokoin readers.",
-    url: "/about",
-    siteName: "Pokoin News",
-    images: [{ url: "/pokoin-1024.png", width: 1024, height: 1024, alt: "Pokoin" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "About Us | Pokoin News",
-    description:
-      "Family-safe Pokemon card news, Pokoin marketplace context, collector signals, and transparent hype scoring.",
-    images: ["/pokoin-1024.png"],
-  },
-  robots: {
-    index: true,
-    follow: true,
-  },
 };
 
 function SectionList({ title, items }: { title: string; items: string[] }) {

@@ -8,25 +8,6 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/contact",
   },
-  openGraph: {
-    title: "Contact Us | Pokoin News",
-    description:
-      "Reach Pokoin News for editorial feedback, advertising inquiries, card highlight corrections, and source updates.",
-    url: "/contact",
-    siteName: "Pokoin News",
-    images: [{ url: "/pokoin-1024.png", width: 1024, height: 1024, alt: "Pokoin" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Contact Us | Pokoin News",
-    description:
-      "Contact Pokoin News for editorial feedback, advertising inquiries, card highlight corrections, and source updates.",
-    images: ["/pokoin-1024.png"],
-  },
-  robots: {
-    index: true,
-    follow: true,
-  },
 };
 
 const contactReasons = [
