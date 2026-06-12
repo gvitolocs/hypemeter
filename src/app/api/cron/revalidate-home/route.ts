@@ -1,24 +1,31 @@
 import { HYPEMETER_CACHE_TAG_HOME } from "@/lib/homePageCacheConfig";
 import { refreshHomePageRuntimeSnapshot } from "@/lib/homePageRuntimeSnapshot";
+import { HYPEMETER_CACHE_TAG_MARKET_SIDECAR } from "@/lib/marketSnapshotHourlyCache";
 import { revalidateTag } from "next/cache";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /**
  * Warms Next.js Data Cache for the home pipeline (news, Card Highlight, etc.).
  * Call with Authorization: Bearer CRON_SECRET (set in Vercel env).
- * Runs on the backend schedule (every 5 hours) to refresh DB snapshot.
+ * Runs on the backend schedule to refresh the DB snapshot.
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
-  const isVercelCron = request.headers.get("x-vercel-cron") === "1";
+  const userAgent = request.headers.get("user-agent") ?? "";
+  const isVercelCron =
+    request.headers.get("x-vercel-cron") === "1" ||
+    userAgent.toLowerCase().includes("vercel-cron/1.0");
   const hasValidBearer = Boolean(secret) && request.headers.get("authorization") === `Bearer ${secret}`;
-  if (!isVercelCron && !hasValidBearer) {
+  const authorized = secret ? hasValidBearer : isVercelCron;
+  if (!authorized) {
     return new Response("Unauthorized", { status: 401 });
   }
 
   const now = new Date();
   revalidateTag(HYPEMETER_CACHE_TAG_HOME, "default");
+  revalidateTag(HYPEMETER_CACHE_TAG_MARKET_SIDECAR, "default");
   try {
     await refreshHomePageRuntimeSnapshot();
   } catch (error) {

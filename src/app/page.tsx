@@ -17,8 +17,8 @@ import {
   fetchMarketYearlyOverlay,
   type MarketYearlyOverlay,
 } from "@/lib/marketBacktrack";
-import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
+import { fetchMarketSnapshotHourly } from "@/lib/marketSnapshotHourlyCache";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
 import {
   HOME_PAGE_DATA_CACHE_TTL_SEC,
@@ -27,6 +27,7 @@ import {
 import {
   HOME_PAGE_RUNTIME_SNAPSHOT_KEY,
 } from "@/lib/homePageRuntimeSnapshot";
+import { isHomePageRuntimeSnapshotFresh } from "@/lib/homePageRuntimeFreshness";
 import {
   fetchPokemonByIdentifier,
   fetchPokemonNameCatalog,
@@ -202,7 +203,7 @@ const HOME_CARD_HIGHLIGHT_LAST_GOOD_CACHE_KEY = "home_card_highlight_last_good_v
 const MARKET_SNAPSHOT_CACHE_KEY = "market_snapshot";
 const MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY = "market_snapshot_last_good_v1";
 const HOME_TIMEOUT_NEWS_MS = 8_000;
-const HOME_TIMEOUT_MARKET_MS = 3200;
+const HOME_TIMEOUT_MARKET_MS = 6500;
 const HOME_TIMEOUT_SIGNAL_MS = 900;
 const HOME_TIMEOUT_SOCIAL_MS = 1000;
 const HOME_TIMEOUT_CARD_WARM_MS = 900;
@@ -211,6 +212,7 @@ const HOME_BOOTSTRAP_NEWS_MS = 2_200;
 const HOME_TOP_ARTICLES_TARGET = 10;
 const MARKET_OVERLAY_REFRESH_MS = 90 * 60 * 1000;
 const marketOverlayRefreshInFlight = new Set<string>();
+let homePageRuntimeSnapshotRefreshInFlight = false;
 
 const blockedSourceHints = [
   "hotelier.com.py",
@@ -511,22 +513,27 @@ function emptyMarketSnapshot(): MarketSnapshot {
 }
 
 const MARKET_SNAPSHOT_HARD_FALLBACK: MarketSnapshot = {
-  sp500: 6506.48,
-  bitcoin: 70076.5,
-  nintendo: 14.7,
-  nintendoPreviousClose: 15.2,
-  nintendoChangeAbs: -0.5,
-  nintendoChangeCurrency: "USD",
-  sp500GrowthPct: -1.34,
-  bitcoinGrowthPct: 0.12,
-  nintendoGrowthPct: -3.29,
-  updatedAt: "cached fallback",
-  nintendoSource: "adr",
-  sp500Source: "stooq-daily",
-  bitcoinSource: "stooq-daily",
+  sp500: null,
+  bitcoin: null,
+  nintendo: null,
+  nintendoPreviousClose: null,
+  nintendoChangeAbs: null,
+  nintendoChangeCurrency: null,
+  sp500GrowthPct: null,
+  bitcoinGrowthPct: null,
+  nintendoGrowthPct: null,
+  updatedAt: null,
+  nintendoSource: null,
+  sp500Source: null,
+  bitcoinSource: null,
 };
 
+function isStaticMarketFallbackSnapshot(snapshot: MarketSnapshot): boolean {
+  return snapshot.updatedAt === "cached fallback";
+}
+
 function hasMeaningfulMarketSnapshot(snapshot: MarketSnapshot): boolean {
+  if (isStaticMarketFallbackSnapshot(snapshot)) return false;
   return (
     snapshot.sp500 !== null ||
     snapshot.bitcoin !== null ||
@@ -537,22 +544,10 @@ function hasMeaningfulMarketSnapshot(snapshot: MarketSnapshot): boolean {
   );
 }
 
-function mergeMarketSnapshotFallback(primary: MarketSnapshot, fallback: MarketSnapshot): MarketSnapshot {
-  return {
-    sp500: primary.sp500 ?? fallback.sp500,
-    bitcoin: primary.bitcoin ?? fallback.bitcoin,
-    nintendo: primary.nintendo ?? fallback.nintendo,
-    nintendoPreviousClose: primary.nintendoPreviousClose ?? fallback.nintendoPreviousClose,
-    nintendoChangeAbs: primary.nintendoChangeAbs ?? fallback.nintendoChangeAbs,
-    nintendoChangeCurrency: primary.nintendoChangeCurrency ?? fallback.nintendoChangeCurrency,
-    sp500GrowthPct: primary.sp500GrowthPct ?? fallback.sp500GrowthPct,
-    bitcoinGrowthPct: primary.bitcoinGrowthPct ?? fallback.bitcoinGrowthPct,
-    nintendoGrowthPct: primary.nintendoGrowthPct ?? fallback.nintendoGrowthPct,
-    updatedAt: primary.updatedAt ?? fallback.updatedAt,
-    nintendoSource: primary.nintendoSource ?? fallback.nintendoSource,
-    sp500Source: primary.sp500Source ?? fallback.sp500Source,
-    bitcoinSource: primary.bitcoinSource ?? fallback.bitcoinSource,
-  };
+function usableMarketSnapshot(snapshot: MarketSnapshot | null): MarketSnapshot | null {
+  if (!snapshot) return null;
+  const normalized = normalizeMarketSnapshot(snapshot);
+  return hasMeaningfulMarketSnapshot(normalized) ? normalized : null;
 }
 
 // Lightweight XML tag extractor used across RSS-style feeds.
@@ -1110,7 +1105,7 @@ async function fetchYouTubeTraffic() {
     "https://www.youtube.com/results?search_query=pokemon&hl=en&gl=US",
     {
       headers: { "user-agent": "Mozilla/5.0", "accept-language": "en-US,en;q=0.9" },
-      next: { revalidate: 900 },
+      cache: "no-store",
       timeoutMs: 4500,
     },
   );
@@ -2646,23 +2641,19 @@ async function loadHomePageDataUncached() {
     } as NewsCachePayload);
   }
 
-  const cachedMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY);
-  const cachedMarket = cachedMarketRaw ? normalizeMarketSnapshot(cachedMarketRaw) : null;
-  const lastGoodMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY);
-  const lastGoodMarket = lastGoodMarketRaw ? normalizeMarketSnapshot(lastGoodMarketRaw) : null;
+  const cachedMarket = usableMarketSnapshot(
+    readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY),
+  );
+  const lastGoodMarket = usableMarketSnapshot(
+    readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY),
+  );
   let market = normalizeMarketSnapshot(
     await withSoftTimeout(
-      () => timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshot()),
+      () => timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshotHourly()),
       HOME_TIMEOUT_MARKET_MS,
       () => cachedMarket ?? lastGoodMarket ?? emptyMarketSnapshot(),
     ),
   );
-  if (cachedMarket) {
-    market = mergeMarketSnapshotFallback(market, cachedMarket);
-  }
-  if (lastGoodMarket) {
-    market = mergeMarketSnapshotFallback(market, lastGoodMarket);
-  }
 
   if (hasMeaningfulMarketSnapshot(market)) {
     upsertRuntimeSnapshotToDb(MARKET_SNAPSHOT_CACHE_KEY, market);
@@ -2673,8 +2664,6 @@ async function loadHomePageDataUncached() {
     market = cachedMarket;
   } else {
     market = MARKET_SNAPSHOT_HARD_FALLBACK;
-    upsertRuntimeSnapshotToDb(MARKET_SNAPSHOT_CACHE_KEY, market);
-    upsertRuntimeSnapshotToDb(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY, market);
   }
 
   // Pull independent external signals in parallel to minimize latency.
@@ -2931,6 +2920,31 @@ function readHomePageRuntimeSnapshot(): HomePageRuntimeSnapshot | null {
   return raw;
 }
 
+function scheduleHomePageRuntimeSnapshotRefresh() {
+  if (process.env.NODE_ENV === "test") return;
+  if (homePageRuntimeSnapshotRefreshInFlight) return;
+  homePageRuntimeSnapshotRefreshInFlight = true;
+  try {
+    after(async () => {
+      try {
+        const fresh = await timedAsync("home:refreshRuntimeSnapshotAfterResponse", () =>
+          loadHomePageDataUncached(),
+        );
+        upsertRuntimeSnapshotToDb(HOME_PAGE_RUNTIME_SNAPSHOT_KEY, {
+          payload: fresh,
+          updatedAtMs: Date.now(),
+        });
+      } catch {
+        /* Keep serving the best bounded bootstrap payload. */
+      } finally {
+        homePageRuntimeSnapshotRefreshInFlight = false;
+      }
+    });
+  } catch {
+    homePageRuntimeSnapshotRefreshInFlight = false;
+  }
+}
+
 function buildInstantHomePagePayload(newsOverride?: NewsItem[]): HomePagePayload {
   const cachedNewsV2 = asNewsCachePayload(
     readRuntimeSnapshotFromDb<NewsCachePayload>(HOME_NEWS_ITEMS_CACHE_KEY_V2),
@@ -2969,14 +2983,13 @@ function buildInstantHomePagePayload(newsOverride?: NewsItem[]): HomePagePayload
     buildSocialFallbackFromItems(items, searchStats);
   const socialPulse = computeSocialPulseStats(socialTraffic);
 
-  const cachedMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY);
-  const cachedMarket = cachedMarketRaw ? normalizeMarketSnapshot(cachedMarketRaw) : null;
-  const lastGoodMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY);
-  const lastGoodMarket = lastGoodMarketRaw ? normalizeMarketSnapshot(lastGoodMarketRaw) : null;
+  const cachedMarket = usableMarketSnapshot(
+    readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY),
+  );
+  const lastGoodMarket = usableMarketSnapshot(
+    readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY),
+  );
   let market = cachedMarket ?? lastGoodMarket ?? MARKET_SNAPSHOT_HARD_FALLBACK;
-  if (cachedMarket && lastGoodMarket) {
-    market = mergeMarketSnapshotFallback(cachedMarket, lastGoodMarket);
-  }
   if (!hasMeaningfulMarketSnapshot(market)) {
     market = lastGoodMarket ?? cachedMarket ?? MARKET_SNAPSHOT_HARD_FALLBACK;
   }
@@ -3179,8 +3192,24 @@ export async function loadHomePageDataForTests() {
 
 async function loadHomePageData() {
   const snapshot = readHomePageRuntimeSnapshot();
-  if (snapshot && isMeaningfulNewsItems(snapshot.payload.items)) {
+  const snapshotIsFresh = snapshot
+    ? isHomePageRuntimeSnapshotFresh(snapshot.updatedAtMs)
+    : false;
+  if (snapshot && snapshotIsFresh && isMeaningfulNewsItems(snapshot.payload.items)) {
     return snapshot.payload;
+  }
+  if (!snapshotIsFresh) {
+    scheduleHomePageRuntimeSnapshotRefresh();
+  }
+  const staleBootstrapItems = !snapshotIsFresh
+    ? await withSoftTimeout(
+        () => timedAsync("home:bootstrapNewsForStaleSnapshot", () => fetchBootstrapNewsItems()),
+        HOME_BOOTSTRAP_NEWS_MS + 300,
+        () => null,
+      )
+    : null;
+  if (staleBootstrapItems && isMeaningfulNewsItems(staleBootstrapItems)) {
+    return buildInstantHomePagePayload(staleBootstrapItems);
   }
   const instant = buildInstantHomePagePayload();
   if (isMeaningfulNewsItems(instant.items)) return instant;
@@ -3262,7 +3291,7 @@ export default async function Home() {
                     About
                   </Link>
                 </div>
-                <div className="mt-1">
+                <div className="mt-1 w-max max-w-full">
                   <HomeNextUpdateCountdown ttlSec={HOME_PAGE_DATA_CACHE_TTL_SEC} />
                 </div>
               </div>

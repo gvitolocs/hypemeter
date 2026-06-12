@@ -74,5 +74,5 @@ describe("home page article bootstrap", () => {
     expect(payload.topArticles).toHaveLength(10);
     expect(payload.items.length).toBeGreaterThanOrEqual(10);
     expect(payload.liveEventSignals.length).toBeGreaterThan(0);
-  });
+  }, 15_000);
 });

@@ -1,9 +1,8 @@
 import { unstable_cache } from "next/cache";
 import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
-import { HYPEMETER_DATA_REVALIDATE_SEC } from "@/lib/homePageCacheConfig";
 
-/** Backend cadence aligns with home snapshot refresh (every 5 hours). */
-export const MARKET_SIDECAR_REVALIDATE_SEC = HYPEMETER_DATA_REVALIDATE_SEC;
+/** Market quotes should move faster than the full homepage/news snapshot. */
+export const MARKET_SIDECAR_REVALIDATE_SEC = 10 * 60;
 
 /** Invalidate with `revalidateTag` from Reload/cron to warm quotes without waiting for TTL. */
 export const HYPEMETER_CACHE_TAG_MARKET_SIDECAR = "hypemeter-market-sidecar";

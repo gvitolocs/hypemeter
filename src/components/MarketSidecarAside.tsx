@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { MarketHighlightKey, MarketYearlyOverlay } from "@/lib/marketBacktrack";
 import { formatGrowthPct, formatSignedChange, formatUsd, growthPctColorClass } from "@/lib/marketFormat";
 import {
@@ -43,7 +43,18 @@ const BTC_SOURCE_NOTE: Record<NonNullable<MarketSnap["bitcoinSource"]>, string> 
   binance: "Binance (1d)",
 };
 
-/** Backend snapshot powers this panel; frontend does not fetch live quotes directly. */
+const MARKET_CLIENT_REFRESH_MS = 10 * 60 * 1000;
+
+function hasMeaningfulMarketSnapshot(snapshot: MarketSnap): boolean {
+  return (
+    snapshot.sp500 !== null ||
+    snapshot.bitcoin !== null ||
+    snapshot.nintendo !== null ||
+    snapshot.sp500GrowthPct !== null ||
+    snapshot.bitcoinGrowthPct !== null ||
+    snapshot.nintendoGrowthPct !== null
+  );
+}
 
 type Props = {
   initialMarket: MarketSnap;
@@ -62,7 +73,43 @@ export function MarketSidecarAside({
   highlight,
   setHighlight,
 }: Props) {
-  const market = initialMarket;
+  const [market, setMarket] = useState(initialMarket);
+
+  useEffect(() => {
+    let ignore = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
+
+    async function refreshMarket() {
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        const response = await fetch(`/api/market-snapshot?client=${Date.now()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const next = (await response.json()) as MarketSnap;
+        if (!ignore && hasMeaningfulMarketSnapshot(next)) {
+          setMarket(next);
+        }
+      } catch {
+        /* keep server-rendered snapshot */
+      } finally {
+        if (!ignore) {
+          timeoutId = setTimeout(refreshMarket, MARKET_CLIENT_REFRESH_MS);
+        }
+      }
+    }
+
+    void refreshMarket();
+
+    return () => {
+      ignore = true;
+      controller?.abort();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
 
   const sp500Href = STOOQ_QUOTE_SPX;
   const btcHref =
