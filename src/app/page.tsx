@@ -17,8 +17,8 @@ import {
   fetchMarketYearlyOverlay,
   type MarketYearlyOverlay,
 } from "@/lib/marketBacktrack";
-import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
+import { fetchMarketSnapshotHourly } from "@/lib/marketSnapshotHourlyCache";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
 import {
   HOME_PAGE_DATA_CACHE_TTL_SEC,
@@ -203,7 +203,7 @@ const HOME_CARD_HIGHLIGHT_LAST_GOOD_CACHE_KEY = "home_card_highlight_last_good_v
 const MARKET_SNAPSHOT_CACHE_KEY = "market_snapshot";
 const MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY = "market_snapshot_last_good_v1";
 const HOME_TIMEOUT_NEWS_MS = 8_000;
-const HOME_TIMEOUT_MARKET_MS = 3200;
+const HOME_TIMEOUT_MARKET_MS = 6500;
 const HOME_TIMEOUT_SIGNAL_MS = 900;
 const HOME_TIMEOUT_SOCIAL_MS = 1000;
 const HOME_TIMEOUT_CARD_WARM_MS = 900;
@@ -513,22 +513,27 @@ function emptyMarketSnapshot(): MarketSnapshot {
 }
 
 const MARKET_SNAPSHOT_HARD_FALLBACK: MarketSnapshot = {
-  sp500: 6506.48,
-  bitcoin: 70076.5,
-  nintendo: 14.7,
-  nintendoPreviousClose: 15.2,
-  nintendoChangeAbs: -0.5,
-  nintendoChangeCurrency: "USD",
-  sp500GrowthPct: -1.34,
-  bitcoinGrowthPct: 0.12,
-  nintendoGrowthPct: -3.29,
-  updatedAt: "cached fallback",
-  nintendoSource: "adr",
-  sp500Source: "stooq-daily",
-  bitcoinSource: "stooq-daily",
+  sp500: null,
+  bitcoin: null,
+  nintendo: null,
+  nintendoPreviousClose: null,
+  nintendoChangeAbs: null,
+  nintendoChangeCurrency: null,
+  sp500GrowthPct: null,
+  bitcoinGrowthPct: null,
+  nintendoGrowthPct: null,
+  updatedAt: null,
+  nintendoSource: null,
+  sp500Source: null,
+  bitcoinSource: null,
 };
 
+function isStaticMarketFallbackSnapshot(snapshot: MarketSnapshot): boolean {
+  return snapshot.updatedAt === "cached fallback";
+}
+
 function hasMeaningfulMarketSnapshot(snapshot: MarketSnapshot): boolean {
+  if (isStaticMarketFallbackSnapshot(snapshot)) return false;
   return (
     snapshot.sp500 !== null ||
     snapshot.bitcoin !== null ||
@@ -539,22 +544,10 @@ function hasMeaningfulMarketSnapshot(snapshot: MarketSnapshot): boolean {
   );
 }
 
-function mergeMarketSnapshotFallback(primary: MarketSnapshot, fallback: MarketSnapshot): MarketSnapshot {
-  return {
-    sp500: primary.sp500 ?? fallback.sp500,
-    bitcoin: primary.bitcoin ?? fallback.bitcoin,
-    nintendo: primary.nintendo ?? fallback.nintendo,
-    nintendoPreviousClose: primary.nintendoPreviousClose ?? fallback.nintendoPreviousClose,
-    nintendoChangeAbs: primary.nintendoChangeAbs ?? fallback.nintendoChangeAbs,
-    nintendoChangeCurrency: primary.nintendoChangeCurrency ?? fallback.nintendoChangeCurrency,
-    sp500GrowthPct: primary.sp500GrowthPct ?? fallback.sp500GrowthPct,
-    bitcoinGrowthPct: primary.bitcoinGrowthPct ?? fallback.bitcoinGrowthPct,
-    nintendoGrowthPct: primary.nintendoGrowthPct ?? fallback.nintendoGrowthPct,
-    updatedAt: primary.updatedAt ?? fallback.updatedAt,
-    nintendoSource: primary.nintendoSource ?? fallback.nintendoSource,
-    sp500Source: primary.sp500Source ?? fallback.sp500Source,
-    bitcoinSource: primary.bitcoinSource ?? fallback.bitcoinSource,
-  };
+function usableMarketSnapshot(snapshot: MarketSnapshot | null): MarketSnapshot | null {
+  if (!snapshot) return null;
+  const normalized = normalizeMarketSnapshot(snapshot);
+  return hasMeaningfulMarketSnapshot(normalized) ? normalized : null;
 }
 
 // Lightweight XML tag extractor used across RSS-style feeds.
@@ -2648,23 +2641,19 @@ async function loadHomePageDataUncached() {
     } as NewsCachePayload);
   }
 
-  const cachedMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY);
-  const cachedMarket = cachedMarketRaw ? normalizeMarketSnapshot(cachedMarketRaw) : null;
-  const lastGoodMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY);
-  const lastGoodMarket = lastGoodMarketRaw ? normalizeMarketSnapshot(lastGoodMarketRaw) : null;
+  const cachedMarket = usableMarketSnapshot(
+    readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY),
+  );
+  const lastGoodMarket = usableMarketSnapshot(
+    readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY),
+  );
   let market = normalizeMarketSnapshot(
     await withSoftTimeout(
-      () => timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshot()),
+      () => timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshotHourly()),
       HOME_TIMEOUT_MARKET_MS,
       () => cachedMarket ?? lastGoodMarket ?? emptyMarketSnapshot(),
     ),
   );
-  if (cachedMarket) {
-    market = mergeMarketSnapshotFallback(market, cachedMarket);
-  }
-  if (lastGoodMarket) {
-    market = mergeMarketSnapshotFallback(market, lastGoodMarket);
-  }
 
   if (hasMeaningfulMarketSnapshot(market)) {
     upsertRuntimeSnapshotToDb(MARKET_SNAPSHOT_CACHE_KEY, market);
@@ -2675,8 +2664,6 @@ async function loadHomePageDataUncached() {
     market = cachedMarket;
   } else {
     market = MARKET_SNAPSHOT_HARD_FALLBACK;
-    upsertRuntimeSnapshotToDb(MARKET_SNAPSHOT_CACHE_KEY, market);
-    upsertRuntimeSnapshotToDb(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY, market);
   }
 
   // Pull independent external signals in parallel to minimize latency.
@@ -2996,14 +2983,13 @@ function buildInstantHomePagePayload(newsOverride?: NewsItem[]): HomePagePayload
     buildSocialFallbackFromItems(items, searchStats);
   const socialPulse = computeSocialPulseStats(socialTraffic);
 
-  const cachedMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY);
-  const cachedMarket = cachedMarketRaw ? normalizeMarketSnapshot(cachedMarketRaw) : null;
-  const lastGoodMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY);
-  const lastGoodMarket = lastGoodMarketRaw ? normalizeMarketSnapshot(lastGoodMarketRaw) : null;
+  const cachedMarket = usableMarketSnapshot(
+    readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY),
+  );
+  const lastGoodMarket = usableMarketSnapshot(
+    readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY),
+  );
   let market = cachedMarket ?? lastGoodMarket ?? MARKET_SNAPSHOT_HARD_FALLBACK;
-  if (cachedMarket && lastGoodMarket) {
-    market = mergeMarketSnapshotFallback(cachedMarket, lastGoodMarket);
-  }
   if (!hasMeaningfulMarketSnapshot(market)) {
     market = lastGoodMarket ?? cachedMarket ?? MARKET_SNAPSHOT_HARD_FALLBACK;
   }

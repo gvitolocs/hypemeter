@@ -7,7 +7,10 @@ const isStooqNtdy = (url: string) => url.includes("stooq.com") && url.includes("
 const isStooqUsdjpy = (url: string) => url.includes("stooq.com") && url.includes("usdjpy");
 const isStooq7974JpDaily = (url: string) =>
   url.includes("stooq.com") && url.includes("7974.jp") && url.includes("/q/d/l/");
-const COINGECKO_BTC = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
+const COINGECKO_BTC =
+  "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true";
+const isYahooChart = (url: string, symbolHint: string) =>
+  url.includes("finance.yahoo.com/v8/finance/chart/") && url.includes(symbolHint);
 
 const SAMPLE_STOOQ_LINE = (close: number, open: number) =>
   `Symbol,Date,Time,Open,High,Low,Close,Volume\n^SPX,2025-03-20,00:00:00,${open},${open},${close},${close},1`;
@@ -70,6 +73,9 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
       if (url.startsWith(STOOQ_BTC)) {
         return textRes(SAMPLE_STOOQ_LINE(1, 2));
       }
+      if (url.startsWith(COINGECKO_BTC)) {
+        return jsonRes({ bitcoin: { usd: btcClose, usd_24h_change: 0.5 } });
+      }
 
       throw new Error(`unexpected fetch: ${url}`);
     }) as typeof fetch;
@@ -100,6 +106,9 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
       }
       if (url.startsWith(STOOQ_SP500) || url.startsWith(STOOQ_BTC)) {
         return textRes(SAMPLE_STOOQ_LINE(1, 2));
+      }
+      if (url.startsWith(COINGECKO_BTC)) {
+        return jsonRes({ bitcoin: { usd: 101, usd_24h_change: 1 } });
       }
       throw new Error(`unexpected: ${url}`);
     }) as typeof fetch;
@@ -211,6 +220,9 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
 2025-03-18,1,1,1,10000,1
 2025-03-19,1,1,1,10200,1`);
       }
+      if (url.startsWith(COINGECKO_BTC)) {
+        return jsonRes({ bitcoin: { usd: 50000, usd_24h_change: 2 } });
+      }
 
       throw new Error(`unexpected Tokyo test fetch: ${url}`);
     }) as typeof fetch;
@@ -250,6 +262,9 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
       if (url.includes("q/l/?s=usdjpy")) {
         return textRes("");
       }
+      if (url.startsWith(COINGECKO_BTC)) {
+        return jsonRes({ bitcoin: { usd: 50000, usd_24h_change: 2 } });
+      }
       throw new Error(`unexpected ADR fallback fetch: ${url}`);
     }) as typeof fetch;
 
@@ -265,7 +280,7 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : (input as Request).url;
 
-      if (url.includes("query1.finance.yahoo.com/v8/finance/chart/") && url.includes("GSPC")) {
+      if (isYahooChart(url, "GSPC")) {
         return jsonRes({
           chart: {
             result: [
@@ -276,7 +291,7 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
           },
         });
       }
-      if (url.includes("query1.finance.yahoo.com/v8/finance/chart/NTDOY")) {
+      if (isYahooChart(url, "NTDOY")) {
         return jsonRes({
           chart: {
             result: [
@@ -305,6 +320,9 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
       if (url.includes("q/l/?s=usdjpy")) {
         return textRes("");
       }
+      if (url.startsWith(COINGECKO_BTC)) {
+        return jsonRes({ bitcoin: { usd: 50000, usd_24h_change: 2 } });
+      }
       throw new Error(`unexpected yahoo fallback fetch: ${url}`);
     }) as typeof fetch;
 
@@ -314,6 +332,90 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
     expect(snap.nintendo).toBe(14.22);
     expect(snap.nintendoPreviousClose).toBe(14.44);
     expect(snap.nintendoSource).toBe("adr");
+  });
+
+  it("uses query2 Yahoo + CoinGecko change when Stooq serves verification HTML", async () => {
+    const stooqChallenge = `<!DOCTYPE html><html><body><noscript>This site requires JavaScript to verify your browser.</noscript></body></html>`;
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+
+      if (url.includes("stooq.com")) {
+        return textRes(stooqChallenge);
+      }
+      if (isYahooChart(url, "GSPC")) {
+        return jsonRes({
+          chart: { result: [{ indicators: { quote: [{ close: [7266.99, 7394.3] }] } }] },
+        });
+      }
+      if (isYahooChart(url, "NTDOY")) {
+        return jsonRes({
+          chart: { result: [{ indicators: { quote: [{ close: [11.1, 11.23] }] } }] },
+        });
+      }
+      if (url.startsWith(COINGECKO_BTC)) {
+        return jsonRes({ bitcoin: { usd: 63745, usd_24h_change: 1.035 } });
+      }
+      if (url.includes("api.binance.com")) {
+        return textRes("", false);
+      }
+
+      throw new Error(`unexpected challenge fallback fetch: ${url}`);
+    }) as typeof fetch;
+
+    const snap = await fetchMarketSnapshot();
+
+    expect(snap.sp500).toBe(7394.3);
+    expect(snap.sp500Source).toBe("yahoo");
+    expect(snap.bitcoin).toBe(63745);
+    expect(snap.bitcoinGrowthPct).toBeCloseTo(1.035, 4);
+    expect(snap.bitcoinSource).toBe("coingecko");
+    expect(snap.nintendo).toBe(11.23);
+    expect(snap.nintendoSource).toBe("adr");
+    expect(snap.updatedAt).not.toBe("cached fallback");
+  });
+
+  it("uses the Jina Yahoo chart fallback when direct Yahoo is rate-limited", async () => {
+    const stooqChallenge = `<!DOCTYPE html><html><body><noscript>This site requires JavaScript to verify your browser.</noscript></body></html>`;
+    const jinaWrapped = (payload: unknown) =>
+      `Title:\n\nURL Source: http://query2.finance.yahoo.com\n\nMarkdown Content:\n${JSON.stringify(payload)}`;
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+
+      if (url.includes("stooq.com")) {
+        return textRes(stooqChallenge);
+      }
+      if (url.startsWith("https://r.jina.ai/") && url.includes("GSPC")) {
+        return textRes(
+          jinaWrapped({ chart: { result: [{ indicators: { quote: [{ close: [7266.99, 7394.3] }] } }] } }),
+        );
+      }
+      if (url.startsWith("https://r.jina.ai/") && url.includes("NTDOY")) {
+        return textRes(
+          jinaWrapped({ chart: { result: [{ indicators: { quote: [{ close: [11.1, 11.23] }] } }] } }),
+        );
+      }
+      if (isYahooChart(url, "GSPC") || isYahooChart(url, "NTDOY")) {
+        return textRes("Too Many Requests", false);
+      }
+      if (url.startsWith(COINGECKO_BTC)) {
+        return jsonRes({ bitcoin: { usd: 63745, usd_24h_change: 1.035 } });
+      }
+      if (url.includes("api.binance.com")) {
+        return textRes("", false);
+      }
+
+      throw new Error(`unexpected Jina fallback fetch: ${url}`);
+    }) as typeof fetch;
+
+    const snap = await fetchMarketSnapshot();
+
+    expect(snap.sp500).toBe(7394.3);
+    expect(snap.sp500Source).toBe("yahoo");
+    expect(snap.nintendo).toBe(11.23);
+    expect(snap.nintendoSource).toBe("adr");
+    expect(snap.bitcoinGrowthPct).toBeCloseTo(1.035, 4);
   });
 
   it("uses Stooq precise line-with-previous-close for S&P500 when available", async () => {
@@ -343,7 +445,7 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
       if (url.includes("q/l/?s=ntdoy.us")) {
         return textRes("");
       }
-      if (url.includes("query1.finance.yahoo.com/v8/finance/chart/NTDOY")) {
+      if (isYahooChart(url, "NTDOY")) {
         return jsonRes({
           chart: { result: [{ indicators: { quote: [{ close: [14.44, 14.22] }] } }] },
         });
@@ -353,6 +455,9 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
       }
       if (url.includes("q/l/?s=usdjpy")) {
         return textRes("");
+      }
+      if (url.startsWith(COINGECKO_BTC)) {
+        return jsonRes({ bitcoin: { usd: 50000, usd_24h_change: 2 } });
       }
       throw new Error(`unexpected precise sp500 fetch: ${url}`);
     }) as typeof fetch;

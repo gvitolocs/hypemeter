@@ -1,5 +1,6 @@
 import { HYPEMETER_CACHE_TAG_HOME } from "@/lib/homePageCacheConfig";
 import { refreshHomePageRuntimeSnapshot } from "@/lib/homePageRuntimeSnapshot";
+import { HYPEMETER_CACHE_TAG_MARKET_SIDECAR } from "@/lib/marketSnapshotHourlyCache";
 import { revalidateTag } from "next/cache";
 
 export const runtime = "nodejs";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * Warms Next.js Data Cache for the home pipeline (news, Card Highlight, etc.).
  * Call with Authorization: Bearer CRON_SECRET (set in Vercel env).
- * Runs on the backend schedule (every 5 hours) to refresh DB snapshot.
+ * Runs on the backend schedule to refresh the DB snapshot.
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
 
   const now = new Date();
   revalidateTag(HYPEMETER_CACHE_TAG_HOME, "default");
+  revalidateTag(HYPEMETER_CACHE_TAG_MARKET_SIDECAR, "default");
   try {
     await refreshHomePageRuntimeSnapshot();
   } catch (error) {

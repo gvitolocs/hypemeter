@@ -6,7 +6,7 @@ import {
 export const runtime = "nodejs";
 
 /**
- * JSON quotes for the Market Sidecar. Cached 1h on the CDN + Next (`fetchMarketSnapshotHourly`).
+ * JSON quotes for the Market Sidecar. Cached briefly on the CDN + Next (`fetchMarketSnapshotHourly`).
  */
 export async function GET() {
   const snapshot = await fetchMarketSnapshotHourly();

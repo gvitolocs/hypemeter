@@ -37,11 +37,11 @@ export const COINGECKO_FETCH: RequestInit = {
 const BINANCE_BTC_KLINES_URL =
   "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=2";
 const YAHOO_GSPC_CHART_URL =
-  "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d";
+  "https://query2.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d";
 const YAHOO_NTDOY_CHART_URL =
-  "https://query1.finance.yahoo.com/v8/finance/chart/NTDOY?range=5d&interval=1d";
+  "https://query2.finance.yahoo.com/v8/finance/chart/NTDOY?range=5d&interval=1d";
 const YAHOO_7974_TOKYO_CHART_URL =
-  "https://query1.finance.yahoo.com/v8/finance/chart/7974.T?range=5d&interval=1d";
+  "https://query2.finance.yahoo.com/v8/finance/chart/7974.T?range=5d&interval=1d";
 
 const STOOQ_SP500_URL = "https://stooq.com/q/l/?s=%5Espx&i=d";
 const STOOQ_BTC_URL = "https://stooq.com/q/l/?s=btcusd&i=d";
@@ -51,7 +51,7 @@ const STOOQ_NTDY_URLS = [
 ] as const;
 const STOOQ_USDJPY_L = "https://stooq.com/q/l/?s=usdjpy&i=d";
 const COINGECKO_BTC_URL =
-  "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
+  "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true";
 
 function buildStooqDailyUrl(symbol: string): string {
   const d2 = new Date();
@@ -237,18 +237,59 @@ async function fetchBitcoinBinanceDailyLastTwo(): Promise<{
   }
 }
 
+function buildJinaReaderUrl(url: string): string {
+  const withoutProtocol = url.replace(/^https?:\/\//, "");
+  return `https://r.jina.ai/http://${withoutProtocol}`;
+}
+
+function parseYahooChartJsonText(text: string): unknown | null {
+  const trimmed = text.trim();
+  const directStart = trimmed.indexOf('{"chart"');
+  if (directStart < 0) return null;
+  const maybeJson = trimmed.slice(directStart);
+  try {
+    return JSON.parse(maybeJson);
+  } catch {
+    const end = maybeJson.lastIndexOf("}");
+    if (end < 0) return null;
+    try {
+      return JSON.parse(maybeJson.slice(0, end + 1));
+    } catch {
+      return null;
+    }
+  }
+}
+
+async function fetchYahooChartJson(url: string): Promise<unknown | null> {
+  const init: RequestInit = {
+    cache: "no-store",
+    headers: { ...QUOTE_HEADERS, Accept: "application/json,text/plain,*/*" },
+    signal: AbortSignal.timeout(4500),
+  };
+  try {
+    const res = await fetch(url, init);
+    if (res.ok) return await res.json();
+  } catch {
+    /* try reader proxy below */
+  }
+
+  try {
+    const res = await fetch(buildJinaReaderUrl(url), init);
+    if (!res.ok) return null;
+    return parseYahooChartJsonText(await res.text());
+  } catch {
+    return null;
+  }
+}
+
 async function fetchYahooDailyLastTwoByChartUrl(url: string): Promise<{
   price: number;
   previousClose: number;
   growthPct: number;
 } | null> {
   try {
-    const res = await fetch(url, {
-      cache: "no-store",
-      headers: { ...QUOTE_HEADERS },
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as unknown;
+    const json = await fetchYahooChartJson(url);
+    if (!json) return null;
     const two = parseYahooChartLastTwoCloses(json);
     if (!(two.last && two.prev && two.last > 0 && two.prev > 0)) return null;
     return {
@@ -417,7 +458,7 @@ async function resolveSp500Metrics(spx: {
 /** Stooq daily → merge line → CoinGecko → Binance. */
 async function resolveBitcoinMetrics(
   btcStooq: { close: number | null; growthPct: number | null },
-  options: { mode: "stooq" | "coingecko"; coingeckoUsd?: number | null },
+  options: { mode: "stooq" | "coingecko"; coingeckoUsd?: number | null; coingeckoGrowthPct?: number | null },
 ): Promise<{
   bitcoin: number | null;
   bitcoinGrowthPct: number | null;
@@ -434,7 +475,7 @@ async function resolveBitcoinMetrics(
   } else {
     const r = computeBitcoinCoinGeckoFallbackPath(NULL_QUOTE, options.coingeckoUsd);
     bitcoin = r.bitcoin;
-    bitcoinGrowthPct = r.bitcoinGrowthPct;
+    bitcoinGrowthPct = r.bitcoinGrowthPct ?? options.coingeckoGrowthPct ?? null;
   }
 
   let bitcoinSource: BitcoinQuoteSource | null =
@@ -465,6 +506,12 @@ async function resolveBitcoinMetrics(
     bitcoin = stooqBtcDaily.price;
     bitcoinGrowthPct = stooqBtcDaily.growthPct;
     bitcoinSource = "stooq-daily";
+  }
+
+  if (btcIncomplete(bitcoin, bitcoinGrowthPct) && options.coingeckoUsd !== null && options.coingeckoUsd !== undefined) {
+    bitcoin = options.coingeckoUsd;
+    bitcoinGrowthPct = options.coingeckoGrowthPct ?? null;
+    bitcoinSource = "coingecko";
   }
 
   if (btcIncomplete(bitcoin, bitcoinGrowthPct)) {
@@ -636,15 +683,25 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     }).format(new Date())} UTC`;
 
   try {
-    const [spRes, btcRes] = await Promise.all([
+    const [spRes, btcRes, cgRes] = await Promise.all([
       fetch(STOOQ_SP500_URL, STOOQ_QUOTE_FETCH),
       fetch(STOOQ_BTC_URL, STOOQ_QUOTE_FETCH),
+      fetch(COINGECKO_BTC_URL, COINGECKO_FETCH),
     ]);
     const spx = spRes.ok ? parseStooqMetrics(await spRes.text()) : { close: null, growthPct: null };
     const btc = btcRes.ok ? parseStooqMetrics(await btcRes.text()) : { close: null, growthPct: null };
+    const btcData = cgRes.ok
+      ? ((await cgRes.json()) as { bitcoin?: { usd?: number; usd_24h_change?: number } })
+      : {};
     const [spResolved, btcResolved, nintendoResolved] = await Promise.all([
       timedAsync("market:resolveSp500", () => resolveSp500Metrics(spx)),
-      timedAsync("market:resolveBitcoin", () => resolveBitcoinMetrics(btc, { mode: "stooq" })),
+      timedAsync("market:resolveBitcoin", () =>
+        resolveBitcoinMetrics(btc, {
+          mode: "stooq",
+          coingeckoUsd: btcData.bitcoin?.usd,
+          coingeckoGrowthPct: btcData.bitcoin?.usd_24h_change,
+        }),
+      ),
       timedAsync("market:resolveNintendo", () => resolveNintendoMetrics()),
     ]);
     const path1 = buildSnapshotFromResolvedParts(spResolved, btcResolved, nintendoResolved, stamp());
@@ -661,7 +718,7 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     ]);
     const spText = spRes.ok ? await spRes.text() : "";
     const btcData = cgRes.ok
-      ? ((await cgRes.json()) as { bitcoin?: { usd?: number } })
+      ? ((await cgRes.json()) as { bitcoin?: { usd?: number; usd_24h_change?: number } })
       : {};
     const spx = parseStooqMetrics(spText);
     const btcStooq = btcStooqRes.ok ? parseStooqMetrics(await btcStooqRes.text()) : { close: null, growthPct: null };
@@ -671,6 +728,7 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
         resolveBitcoinMetrics(btcStooq, {
           mode: "coingecko",
           coingeckoUsd: btcData.bitcoin?.usd,
+          coingeckoGrowthPct: btcData.bitcoin?.usd_24h_change,
         }),
       ),
       timedAsync("market:resolveNintendo", () => resolveNintendoMetrics()),
