@@ -3,6 +3,7 @@ import { refreshHomePageRuntimeSnapshot } from "@/lib/homePageRuntimeSnapshot";
 import { revalidateTag } from "next/cache";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /**
  * Warms Next.js Data Cache for the home pipeline (news, Card Highlight, etc.).
@@ -11,9 +12,13 @@ export const runtime = "nodejs";
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
-  const isVercelCron = request.headers.get("x-vercel-cron") === "1";
+  const userAgent = request.headers.get("user-agent") ?? "";
+  const isVercelCron =
+    request.headers.get("x-vercel-cron") === "1" ||
+    userAgent.toLowerCase().includes("vercel-cron/1.0");
   const hasValidBearer = Boolean(secret) && request.headers.get("authorization") === `Bearer ${secret}`;
-  if (!isVercelCron && !hasValidBearer) {
+  const authorized = secret ? hasValidBearer : isVercelCron;
+  if (!authorized) {
     return new Response("Unauthorized", { status: 401 });
   }
 

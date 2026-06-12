@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { loadPokemonSpotlightBundleForSuspense } from "@/lib/homeSpotlightServer";
+import { pokemonSpotlightCopy } from "@/lib/pokemonSpotlightCopy";
 import { pokemonPokedexUrl } from "@/lib/pokemonPokedexUrl";
 
 /** Daily Pokemon spotlight: same once-per-day resolver as the home pipeline, non-blocking for TTFB. */
@@ -13,6 +14,10 @@ export async function HomePokemonHighlightAsync() {
     : pokemonOfDay
       ? `Open ${pokemonOfDay.name} on Pokemon Pokedex`
       : "Pokemon highlight";
+  const spotlightCopy = pokemonSpotlightCopy({
+    pokemon: pokemonOfDay,
+    article: pokemonOfDayArticle,
+  });
 
   return (
     <a
@@ -60,9 +65,7 @@ export async function HomePokemonHighlightAsync() {
           </div>
         </div>
         <p className="line-clamp-3 text-[11px] leading-snug text-slate-400">
-          {pokemonOfDayArticle?.title ??
-            pokemonOfDayArticle?.summary ??
-            "Daily spotlight is refreshing from cache. Try Reload in a few seconds."}
+          {spotlightCopy}
         </p>
       </div>
     </a>

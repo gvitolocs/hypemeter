@@ -12,10 +12,7 @@ function formatMmSs(msRemaining: number): string {
 
 /** Countdown to the next wall-clock-aligned refresh boundary (stable across page reloads). */
 export function HomeNextUpdateCountdown({ ttlSec }: { ttlSec: number }) {
-  const [remainingMs, setRemainingMs] = useState(() => {
-    const end = homeRefreshPeriodEndMs(Date.now(), ttlSec);
-    return Math.max(0, end - Date.now());
-  });
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
 
   useEffect(() => {
     const tick = () => {
@@ -28,8 +25,8 @@ export function HomeNextUpdateCountdown({ ttlSec }: { ttlSec: number }) {
   }, [ttlSec]);
 
   return (
-    <p className="text-[11px] text-cyan-200/85 underline decoration-cyan-400/35 underline-offset-2">
-      Next update in {formatMmSs(remainingMs)}
+    <p className="whitespace-nowrap text-[11px] text-cyan-200/85 underline decoration-cyan-400/35 underline-offset-2">
+      Next update in {remainingMs === null ? "--:--" : formatMmSs(remainingMs)}
     </p>
   );
 }

@@ -27,6 +27,7 @@ import {
 import {
   HOME_PAGE_RUNTIME_SNAPSHOT_KEY,
 } from "@/lib/homePageRuntimeSnapshot";
+import { isHomePageRuntimeSnapshotFresh } from "@/lib/homePageRuntimeFreshness";
 import {
   fetchPokemonByIdentifier,
   fetchPokemonNameCatalog,
@@ -211,6 +212,7 @@ const HOME_BOOTSTRAP_NEWS_MS = 2_200;
 const HOME_TOP_ARTICLES_TARGET = 10;
 const MARKET_OVERLAY_REFRESH_MS = 90 * 60 * 1000;
 const marketOverlayRefreshInFlight = new Set<string>();
+let homePageRuntimeSnapshotRefreshInFlight = false;
 
 const blockedSourceHints = [
   "hotelier.com.py",
@@ -1110,7 +1112,7 @@ async function fetchYouTubeTraffic() {
     "https://www.youtube.com/results?search_query=pokemon&hl=en&gl=US",
     {
       headers: { "user-agent": "Mozilla/5.0", "accept-language": "en-US,en;q=0.9" },
-      next: { revalidate: 900 },
+      cache: "no-store",
       timeoutMs: 4500,
     },
   );
@@ -2931,6 +2933,31 @@ function readHomePageRuntimeSnapshot(): HomePageRuntimeSnapshot | null {
   return raw;
 }
 
+function scheduleHomePageRuntimeSnapshotRefresh() {
+  if (process.env.NODE_ENV === "test") return;
+  if (homePageRuntimeSnapshotRefreshInFlight) return;
+  homePageRuntimeSnapshotRefreshInFlight = true;
+  try {
+    after(async () => {
+      try {
+        const fresh = await timedAsync("home:refreshRuntimeSnapshotAfterResponse", () =>
+          loadHomePageDataUncached(),
+        );
+        upsertRuntimeSnapshotToDb(HOME_PAGE_RUNTIME_SNAPSHOT_KEY, {
+          payload: fresh,
+          updatedAtMs: Date.now(),
+        });
+      } catch {
+        /* Keep serving the best bounded bootstrap payload. */
+      } finally {
+        homePageRuntimeSnapshotRefreshInFlight = false;
+      }
+    });
+  } catch {
+    homePageRuntimeSnapshotRefreshInFlight = false;
+  }
+}
+
 function buildInstantHomePagePayload(newsOverride?: NewsItem[]): HomePagePayload {
   const cachedNewsV2 = asNewsCachePayload(
     readRuntimeSnapshotFromDb<NewsCachePayload>(HOME_NEWS_ITEMS_CACHE_KEY_V2),
@@ -3179,8 +3206,24 @@ export async function loadHomePageDataForTests() {
 
 async function loadHomePageData() {
   const snapshot = readHomePageRuntimeSnapshot();
-  if (snapshot && isMeaningfulNewsItems(snapshot.payload.items)) {
+  const snapshotIsFresh = snapshot
+    ? isHomePageRuntimeSnapshotFresh(snapshot.updatedAtMs)
+    : false;
+  if (snapshot && snapshotIsFresh && isMeaningfulNewsItems(snapshot.payload.items)) {
     return snapshot.payload;
+  }
+  if (!snapshotIsFresh) {
+    scheduleHomePageRuntimeSnapshotRefresh();
+  }
+  const staleBootstrapItems = !snapshotIsFresh
+    ? await withSoftTimeout(
+        () => timedAsync("home:bootstrapNewsForStaleSnapshot", () => fetchBootstrapNewsItems()),
+        HOME_BOOTSTRAP_NEWS_MS + 300,
+        () => null,
+      )
+    : null;
+  if (staleBootstrapItems && isMeaningfulNewsItems(staleBootstrapItems)) {
+    return buildInstantHomePagePayload(staleBootstrapItems);
   }
   const instant = buildInstantHomePagePayload();
   if (isMeaningfulNewsItems(instant.items)) return instant;
@@ -3262,7 +3305,7 @@ export default async function Home() {
                     About
                   </Link>
                 </div>
-                <div className="mt-1">
+                <div className="mt-1 w-max max-w-full">
                   <HomeNextUpdateCountdown ttlSec={HOME_PAGE_DATA_CACHE_TTL_SEC} />
                 </div>
               </div>
